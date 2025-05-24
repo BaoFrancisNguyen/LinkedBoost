@@ -1,0 +1,154 @@
+<!-- templates/index.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row">
+    <!-- Header avec stats -->
+    <div class="col-12 mb-4">
+        <div class="card bg-gradient-primary text-white">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h1 class="card-title mb-2">
+                            <i class="fab fa-linkedin me-3"></i>LinkedBoost Dashboard
+                        </h1>
+                        <p class="card-text lead mb-0">
+                            Votre assistant IA pour optimiser votre présence LinkedIn
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        <div class="d-flex flex-column">
+                            <span class="h4 mb-1">Statut IA</span>
+                            {% if ollama_status %}
+                                <span class="badge bg-success fs-6">
+                                    <i class="fas fa-check-circle me-1"></i>Opérationnel
+                                </span>
+                            {% else %}
+                                <span class="badge bg-danger fs-6">
+                                    <i class="fas fa-exclamation-triangle me-1"></i>Hors ligne
+                                </span>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistiques -->
+    <div class="col-12 mb-4">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="fas fa-comment text-primary fa-3x mb-3"></i>
+                        <h3 class="text-primary">{{ stats.messages_generated }}</h3>
+                        <p class="text-muted mb-0">Messages générés</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="fas fa-file-alt text-success fa-3x mb-3"></i>
+                        <h3 class="text-success">{{ stats.cover_letters_generated }}</h3>
+                        <p class="text-muted mb-0">Lettres créées</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="fas fa-envelope text-warning fa-3x mb-3"></i>
+                        <h3 class="text-warning">{{ stats.emails_generated }}</h3>
+                        <p class="text-muted mb-0">Emails envoyés</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="fas fa-chart-line text-info fa-3x mb-3"></i>
+                        <h3 class="text-info">{{ stats.success_rate }}%</h3>
+                        <p class="text-muted mb-0">Taux de succès</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions rapides -->
+    <div class="col-12">
+        <div class="row g-4">
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-comment text-primary fa-4x mb-4"></i>
+                        <h5 class="card-title">Messages LinkedIn</h5>
+                        <p class="card-text">
+                            Générez des messages de connexion, de suivi ou d'opportunité personnalisés pour LinkedIn.
+                        </p>
+                        <a href="{{ url_for('message_generator_page') }}" class="btn btn-primary">
+                            <i class="fas fa-magic me-2"></i>Créer un message
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-file-alt text-success fa-4x mb-4"></i>
+                        <h5 class="card-title">Lettres de motivation</h5>
+                        <p class="card-text">
+                            Créez des lettres de motivation professionnelles adaptées à chaque offre d'emploi.
+                        </p>
+                        <a href="{{ url_for('cover_letter_page') }}" class="btn btn-success">
+                            <i class="fas fa-pen me-2"></i>Rédiger une lettre
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="fas fa-envelope text-warning fa-4x mb-4"></i>
+                        <h5 class="card-title">Emails de networking</h5>
+                        <p class="card-text">
+                            Générez des emails professionnels pour vos demandes de rendez-vous et votre networking.
+                        </p>
+                        <a href="{{ url_for('email_generator_page') }}" class="btn btn-warning">
+                            <i class="fas fa-paper-plane me-2"></i>Composer un email
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Section analyse de profil -->
+    <div class="col-12 mt-5">
+        <div class="card bg-light">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-8">
+                        <h5 class="card-title">
+                            <i class="fas fa-chart-line text-info me-2"></i>
+                            Analysez votre profil LinkedIn
+                        </h5>
+                        <p class="card-text">
+                            Obtenez des recommandations personnalisées pour optimiser votre profil LinkedIn et attirer plus d'opportunités.
+                        </p>
+                    </div>
+                    <div class="col-md-4 text-md-end">
+                        <a href="{{ url_for('profile_analyzer_page') }}" class="btn btn-info">
+                            <i class="fas fa-search me-2"></i>Analyser maintenant
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

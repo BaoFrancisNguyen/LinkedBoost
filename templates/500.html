@@ -1,0 +1,37 @@
+<!-- templates/500.html -->
+{% extends "base.html" %}
+
+{% block title %}Erreur serveur - LinkedBoost{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-6 text-center">
+        <div class="card">
+            <div class="card-body py-5">
+                <i class="fas fa-exclamation-triangle fa-5x text-warning mb-4"></i>
+                <h1 class="display-4 text-muted">500</h1>
+                <h4 class="mb-3">Erreur interne du serveur</h4>
+                <p class="text-muted mb-4">
+                    Une erreur s'est produite. Notre équipe a été notifiée et travaille sur une solution.
+                </p>
+                <div class="alert alert-info text-start">
+                    <h6>Que pouvez-vous faire ?</h6>
+                    <ul class="mb-0">
+                        <li>Vérifiez qu'Ollama est bien démarré</li>
+                        <li>Essayez de recharger la page</li>
+                        <li>Revenez dans quelques minutes</li>
+                    </ul>
+                </div>
+                <div class="mt-4">
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-primary me-2">
+                        <i class="fas fa-home me-2"></i>Retour à l'accueil
+                    </a>
+                    <button class="btn btn-outline-secondary" onclick="location.reload()">
+                        <i class="fas fa-redo me-2"></i>Recharger
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %>}

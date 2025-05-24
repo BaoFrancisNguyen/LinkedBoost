@@ -1,0 +1,224 @@
+{% extends "base.html" %}
+
+{% block title %}Générateur d'Emails - LinkedBoost{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="card">
+            <div class="card-header bg-warning text-dark">
+                <h4 class="mb-0">
+                    <i class="fas fa-envelope me-2"></i>Générateur d'Emails de Networking
+                </h4>
+            </div>
+            <div class="card-body">
+                <form id="emailForm">
+                    <div class="row g-3">
+                        <!-- Type d'email -->
+                        <div class="col-md-6">
+                            <label class="form-label">Type d'email *</label>
+                            <select class="form-select" name="email_type" required>
+                                <option value="">Sélectionnez un type</option>
+                                <option value="introduction">Introduction / Premier contact</option>
+                                <option value="meeting_request">Demande de rendez-vous</option>
+                                <option value="follow_up">Suivi après événement</option>
+                            </select>
+                        </div>
+
+                        <!-- Nom du destinataire -->
+                        <div class="col-md-6">
+                            <label class="form-label">Nom du destinataire *</label>
+                            <input type="text" class="form-control" name="recipient_name" 
+                                   placeholder="Ex: Pierre Martin" required>
+                        </div>
+
+                        <!-- Entreprise -->
+                        <div class="col-md-6">
+                            <label class="form-label">Entreprise du destinataire</label>
+                            <input type="text" class="form-control" name="recipient_company" 
+                                   placeholder="Ex: Microsoft France">
+                        </div>
+
+                        <!-- Votre nom -->
+                        <div class="col-md-6">
+                            <label class="form-label">Votre nom</label>
+                            <input type="text" class="form-control" name="sender_name" 
+                                   placeholder="Votre nom complet">
+                        </div>
+
+                        <!-- Contexte/Sujet -->
+                        <div class="col-12">
+                            <label class="form-label">Contexte / Sujet de l'email *</label>
+                            <textarea class="form-control" name="subject_context" rows="3" required
+                                      placeholder="Ex: Suite à notre rencontre au salon TechParis, j'aimerais échanger sur vos projets IA..."></textarea>
+                        </div>
+
+                        <!-- Objectif de la rencontre (si applicable) -->
+                        <div class="col-12" id="meetingPurposeDiv" style="display: none;">
+                            <label class="form-label">Objectif de la rencontre</label>
+                            <textarea class="form-control" name="meeting_purpose" rows="2"
+                                      placeholder="Ex: Échanger sur les tendances du secteur, Explorer des opportunités de collaboration..."></textarea>
+                        </div>
+
+                        <!-- Informations supplémentaires -->
+                        <div class="col-12">
+                            <label class="form-label">Informations supplémentaires</label>
+                            <textarea class="form-control" name="background_info" rows="2"
+                                      placeholder="Détails pertinents, références communes, projets mentionnés..."></textarea>
+                        </div>
+
+                        <!-- Bouton génération -->
+                        <div class="col-12 text-center">
+                            <button type="submit" class="btn btn-warning btn-lg text-dark">
+                                <i class="fas fa-magic me-2"></i>Générer l'email
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Zone de résultat -->
+        <div class="card mt-4" id="resultCard" style="display: none;">
+            <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-check-circle me-2"></i>Email généré
+                </h5>
+                <button class="btn btn-sm btn-outline-dark" onclick="copyFullEmail()">
+                    <i class="fas fa-copy me-1"></i>Copier tout
+                </button>
+            </div>
+            <div class="card-body">
+                <!-- Objet de l'email -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Objet de l'email</label>
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="generatedSubject" readonly>
+                        <button class="btn btn-outline-secondary" onclick="copyToClipboard('generatedSubject')">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Corps de l'email -->
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Corps de l'email</label>
+                    <div class="position-relative">
+                        <textarea class="form-control" id="generatedEmailBody" rows="12" readonly></textarea>
+                        <button class="btn btn-outline-secondary position-absolute top-0 end-0 m-2" 
+                                onclick="copyToClipboard('generatedEmailBody')">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between align-items-center">
+                    <small class="text-muted">
+                        <i class="fas fa-lightbulb me-1"></i>
+                        Conseil : Personnalisez l'email selon votre style avant envoi
+                    </small>
+                    <div>
+                        <button class="btn btn-outline-warning me-2" onclick="regenerateEmail()">
+                            <i class="fas fa-redo me-1"></i>Régénérer
+                        </button>
+                        <button class="btn btn-warning text-dark" onclick="sendEmail()">
+                            <i class="fas fa-paper-plane me-1"></i>Composer dans votre client
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Afficher/masquer le champ objectif selon le type d'email
+document.querySelector('[name="email_type"]').addEventListener('change', function() {
+    const meetingDiv = document.getElementById('meetingPurposeDiv');
+    if (this.value === 'meeting_request') {
+        meetingDiv.style.display = 'block';
+    } else {
+        meetingDiv.style.display = 'none';
+    }
+});
+
+document.getElementById('emailForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData.entries());
+    
+    try {
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Génération...';
+        
+        const response = await fetch('/api/generate/email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            document.getElementById('generatedSubject').value = result.email.subject;
+            document.getElementById('generatedEmailBody').value = result.email.body;
+            document.getElementById('resultCard').style.display = 'block';
+            document.getElementById('resultCard').scrollIntoView({ behavior: 'smooth' });
+        } else {
+            alert('Erreur: ' + result.error);
+        }
+    } catch (error) {
+        alert('Erreur de connexion: ' + error.message);
+    } finally {
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-magic me-2"></i>Générer l\'email';
+    }
+});
+
+function copyToClipboard(elementId) {
+    const element = document.getElementById(elementId);
+    element.select();
+    document.execCommand('copy');
+    
+    // Feedback visuel
+    const btn = event.target.closest('button');
+    const originalIcon = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-check"></i>';
+    setTimeout(() => {
+        btn.innerHTML = originalIcon;
+    }, 1500);
+}
+
+function copyFullEmail() {
+    const subject = document.getElementById('generatedSubject').value;
+    const body = document.getElementById('generatedEmailBody').value;
+    const fullEmail = `Objet: ${subject}\n\n${body}`;
+    
+    navigator.clipboard.writeText(fullEmail).then(() => {
+        const btn = event.target.closest('button');
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<i class="fas fa-check me-1"></i>Copié!';
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+        }, 2000);
+    });
+}
+
+function regenerateEmail() {
+    document.getElementById('emailForm').dispatchEvent(new Event('submit'));
+}
+
+function sendEmail() {
+    const subject = encodeURIComponent(document.getElementById('generatedSubject').value);
+    const body = encodeURIComponent(document.getElementById('generatedEmailBody').value);
+    window.open(`mailto:?subject=${subject}&body=${body}`);
+}
+</script>
+{% endblock %}

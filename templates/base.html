@@ -1,0 +1,83 @@
+<!-- templates/base.html -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}LinkedBoost - Assistant IA pour LinkedIn{% endblock %}</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+</head>
+<body>
+    <!-- Navigation -->
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+        <div class="container">
+            <a class="navbar-brand fw-bold" href="{{ url_for('dashboard') }}">
+                <i class="fab fa-linkedin me-2"></i>LinkedBoost
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('dashboard') }}">
+                            <i class="fas fa-home me-1"></i>Dashboard
+                        </a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-magic me-1"></i>Générateurs
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('message_generator_page') }}">
+                                <i class="fas fa-comment me-2"></i>Messages LinkedIn
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('cover_letter_page') }}">
+                                <i class="fas fa-file-alt me-2"></i>Lettres de motivation
+                            </a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('email_generator_page') }}">
+                                <i class="fas fa-envelope me-2"></i>Emails
+                            </a></li>
+                        </ul>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="{{ url_for('profile_analyzer_page') }}">
+                            <i class="fas fa-chart-line me-1"></i>Analyser Profil
+                        </a>
+                    </li>
+                </ul>
+                <div class="navbar-text">
+                    <span class="badge bg-success" id="status-indicator">
+                        <i class="fas fa-circle me-1"></i>IA Connectée
+                    </span>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Contenu principal -->
+    <main class="container-fluid py-4">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-light py-4 mt-5">
+        <div class="container text-center">
+            <p class="text-muted mb-0">
+                <strong>LinkedBoost</strong> - Votre assistant IA pour LinkedIn
+                <span class="mx-2">|</span>
+                Propulsé par <strong>Ollama & Mistral</strong>
+            </p>
+        </div>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/5.3.0/js/bootstrap.bundle.min.js"></script>
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
+
+
+

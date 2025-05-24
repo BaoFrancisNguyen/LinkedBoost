@@ -1,0 +1,303 @@
+{% extends "base.html" %}
+
+{% block title %}Analyseur de Profil LinkedIn - LinkedBoost{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-10 mx-auto">
+        <div class="card">
+            <div class="card-header bg-info text-white">
+                <h4 class="mb-0">
+                    <i class="fas fa-chart-line me-2"></i>Analyseur de Profil LinkedIn
+                </h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <strong>Comment utiliser cet outil :</strong>
+                    Copiez le texte de votre profil LinkedIn (résumé, expériences, compétences) dans la zone ci-dessous pour obtenir une analyse détaillée et des recommandations d'optimisation.
+                </div>
+
+                <form id="profileAnalyzerForm">
+                    <div class="row g-3">
+                        <!-- Texte du profil -->
+                        <div class="col-12">
+                            <label class="form-label">Contenu de votre profil LinkedIn *</label>
+                            <textarea class="form-control" name="profile_text" rows="10" required
+                                      placeholder="Copiez ici le texte de votre profil LinkedIn : titre professionnel, résumé, expériences, compétences, etc."></textarea>
+                            <small class="form-text text-muted">
+                                Plus vous fournirez d'informations, plus l'analyse sera précise
+                            </small>
+                        </div>
+
+                        <!-- Poste ciblé (optionnel) -->
+                        <div class="col-md-6">
+                            <label class="form-label">Poste visé (optionnel)</label>
+                            <input type="text" class="form-control" name="target_role" 
+                                   placeholder="Ex: Développeur Senior, Chef de Projet...">
+                        </div>
+
+                        <!-- Secteur (optionnel) -->
+                        <div class="col-md-6">
+                            <label class="form-label">Secteur d'activité (optionnel)</label>
+                            <input type="text" class="form-control" name="industry" 
+                                   placeholder="Ex: Technologie, Finance, Consulting...">
+                        </div>
+
+                        <!-- Bouton analyse -->
+                        <div class="col-12 text-center">
+                            <button type="submit" class="btn btn-info btn-lg">
+                                <i class="fas fa-search me-2"></i>Analyser mon profil
+                            </button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Zone de résultats -->
+        <div class="card mt-4" id="analysisResults" style="display: none;">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-bar me-2"></i>Analyse de votre profil LinkedIn
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <!-- Score global -->
+                    <div class="col-md-3">
+                        <div class="text-center">
+                            <div class="display-4 fw-bold text-info" id="globalScore">-/10</div>
+                            <h6 class="text-muted">Score Global</h6>
+                        </div>
+                    </div>
+
+                    <!-- Points forts -->
+                    <div class="col-md-9">
+                        <h6 class="text-success">
+                            <i class="fas fa-thumbs-up me-2"></i>Points forts
+                        </h6>
+                        <ul id="strengths" class="list-unstyled">
+                            <!-- Dynamiquement rempli -->
+                        </ul>
+                    </div>
+
+                    <!-- Points d'amélioration -->
+                    <div class="col-12">
+                        <h6 class="text-warning">
+                            <i class="fas fa-exclamation-triangle me-2"></i>Points d'amélioration
+                        </h6>
+                        <ul id="improvements" class="list-unstyled">
+                            <!-- Dynamiquement rempli -->
+                        </ul>
+                    </div>
+
+                    <!-- Titre suggéré -->
+                    <div class="col-12">
+                        <h6 class="text-primary">
+                            <i class="fas fa-edit me-2"></i>Titre professionnel suggéré
+                        </h6>
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <p id="suggestedTitle" class="mb-0 fw-bold">
+                                    <!-- Dynamiquement rempli -->
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Résumé optimisé -->
+                    <div class="col-12">
+                        <h6 class="text-primary">
+                            <i class="fas fa-file-alt me-2"></i>Résumé optimisé
+                        </h6>
+                        <div class="card bg-light">
+                            <div class="card-body">
+                                <textarea id="optimizedSummary" class="form-control border-0 bg-transparent" rows="6" readonly>
+                                    <!-- Dynamiquement rempli -->
+                                </textarea>
+                                <button class="btn btn-sm btn-outline-primary mt-2" onclick="copyToClipboard('optimizedSummary')">
+                                    <i class="fas fa-copy me-1"></i>Copier le résumé
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Mots-clés manquants -->
+                    <div class="col-md-6">
+                        <h6 class="text-danger">
+                            <i class="fas fa-tags me-2"></i>Mots-clés à ajouter
+                        </h6>
+                        <div id="missingKeywords">
+                            <!-- Dynamiquement rempli avec des badges -->
+                        </div>
+                    </div>
+
+                    <!-- Recommandations urgentes -->
+                    <div class="col-md-6">
+                        <h6 class="text-danger">
+                            <i class="fas fa-fire me-2"></i>Actions prioritaires
+                        </h6>
+                        <ul id="urgentRecommendations" class="list-unstyled">
+                            <!-- Dynamiquement rempli -->
+                        </ul>
+                    </div>
+
+                    <!-- Actions -->
+                    <div class="col-12 text-center">
+                        <button class="btn btn-outline-info me-2" onclick="analyzeAgain()">
+                            <i class="fas fa-redo me-1"></i>Nouvelle analyse
+                        </button>
+                        <button class="btn btn-info" onclick="exportAnalysis()">
+                            <i class="fas fa-download me-1"></i>Exporter l'analyse
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('profileAnalyzerForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const formData = new FormData(e.target);
+    const data = Object.fromEntries(formData.entries());
+    
+    try {
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Analyse en cours...';
+        
+        const response = await fetch('/api/analyze/profile', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(data)
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            displayAnalysis(result.analysis);
+            document.getElementById('analysisResults').style.display = 'block';
+            document.getElementById('analysisResults').scrollIntoView({ behavior: 'smooth' });
+        } else {
+            alert('Erreur: ' + result.error);
+        }
+    } catch (error) {
+        alert('Erreur de connexion: ' + error.message);
+    } finally {
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = '<i class="fas fa-search me-2"></i>Analyser mon profil';
+    }
+});
+
+function displayAnalysis(analysis) {
+    // Score global
+    document.getElementById('globalScore').textContent = analysis.score_global || 'N/A';
+    
+    // Points forts
+    const strengthsList = document.getElementById('strengths');
+    strengthsList.innerHTML = '';
+    (analysis.points_forts || []).forEach(point => {
+        const li = document.createElement('li');
+        li.innerHTML = `<i class="fas fa-check text-success me-2"></i>${point}`;
+        li.className = 'mb-2';
+        strengthsList.appendChild(li);
+    });
+    
+    // Points d'amélioration
+    const improvementsList = document.getElementById('improvements');
+    improvementsList.innerHTML = '';
+    (analysis.points_amelioration || []).forEach(point => {
+        const li = document.createElement('li');
+        li.innerHTML = `<i class="fas fa-arrow-right text-warning me-2"></i>${point}`;
+        li.className = 'mb-2';
+        improvementsList.appendChild(li);
+    });
+    
+    // Titre suggéré
+    document.getElementById('suggestedTitle').textContent = analysis.titre_suggere || 'Non disponible';
+    
+    // Résumé optimisé
+    document.getElementById('optimizedSummary').value = analysis.resume_optimise || 'Non disponible';
+    
+    // Mots-clés manquants
+    const keywordsDiv = document.getElementById('missingKeywords');
+    keywordsDiv.innerHTML = '';
+    (analysis.mots_cles_manquants || []).forEach(keyword => {
+        const badge = document.createElement('span');
+        badge.className = 'badge bg-secondary me-1 mb-1';
+        badge.textContent = keyword;
+        keywordsDiv.appendChild(badge);
+    });
+    
+    // Recommandations urgentes
+    const urgentList = document.getElementById('urgentRecommendations');
+    urgentList.innerHTML = '';
+    (analysis.recommandations_urgentes || []).forEach(rec => {
+        const li = document.createElement('li');
+        li.innerHTML = `<i class="fas fa-exclamation text-danger me-2"></i>${rec}`;
+        li.className = 'mb-2';
+        urgentList.appendChild(li);
+    });
+}
+
+function copyToClipboard(elementId) {
+    const element = document.getElementById(elementId);
+    element.select();
+    document.execCommand('copy');
+    
+    // Feedback visuel
+    const btn = event.target.closest('button');
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-check me-1"></i>Copié!';
+    setTimeout(() => {
+        btn.innerHTML = originalText;
+    }, 2000);
+}
+
+function analyzeAgain() {
+    document.getElementById('analysisResults').style.display = 'none';
+    document.getElementById('profileAnalyzerForm').scrollIntoView({ behavior: 'smooth' });
+}
+
+function exportAnalysis() {
+    const analysis = {
+        score: document.getElementById('globalScore').textContent,
+        title: document.getElementById('suggestedTitle').textContent,
+        summary: document.getElementById('optimizedSummary').value,
+        date: new Date().toLocaleDateString()
+    };
+    
+    const content = `ANALYSE DE PROFIL LINKEDIN - ${analysis.date}
+    
+Score global: ${analysis.score}
+
+Titre suggéré:
+${analysis.title}
+
+Résumé optimisé:
+${analysis.summary}
+
+---
+Généré par LinkedBoost`;
+    
+    const blob = new Blob([content], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `analyse_profil_linkedin_${new Date().toISOString().split('T')[0]}.txt`;
+    a.click();
+    
+    URL.revokeObjectURL(url);
+}
+</script>
+{% endblock %}

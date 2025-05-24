@@ -1,0 +1,122 @@
+{
+  "profiles": [
+    {
+      "id": 1,
+      "name": "Marie Dubois",
+      "position": "Développeuse Full Stack",
+      "company": "TechCorp",
+      "industry": "Technologie",
+      "experience": "5 ans d'expérience en développement web, spécialisée en React et Node.js",
+      "skills": ["JavaScript", "React", "Node.js", "Python", "AWS"],
+      "linkedin_url": "https://linkedin.com/in/marie-dubois"
+    },
+    {
+      "id": 2,
+      "name": "Pierre Martin",
+      "position": "Chef de Projet Digital",
+      "company": "Innovate Solutions",
+      "industry": "Consulting",
+      "experience": "8 ans en gestion de projet, transformation digitale et conduite du changement",
+      "skills": ["Gestion de projet", "Agile", "Scrum", "Leadership", "Digital"],
+      "linkedin_url": "https://linkedin.com/in/pierre-martin"
+    }
+  ],
+  "companies": [
+    {
+      "id": 1,
+      "name": "Google France",
+      "industry": "Technologie",
+      "size": "10000+",
+      "description": "Leader mondial en technologie et innovation"
+    },
+    {
+      "id": 2,
+      "name": "BNP Paribas",
+      "industry": "Finance",
+      "size": "5000-10000",
+      "description": "Groupe bancaire international"
+    },
+    {
+      "id": 3,
+      "name": "Capgemini",
+      "industry": "Consulting",
+      "size": "10000+",
+      "description": "Leader mondial des services de conseil et technologie"
+    }
+  ],
+  "job_offers": [
+    {
+      "id": 1,
+      "title": "Développeur Full Stack Senior",
+      "company": "TechStart",
+      "location": "Paris",
+      "type": "CDI",
+      "description": "Nous recherchons un développeur expérimenté pour rejoindre notre équipe de développement. Vous travaillerez sur des projets innovants en utilisant les dernières technologies.",
+      "requirements": [
+        "5+ ans d'expérience en développement web",
+        "Maîtrise de JavaScript, React, Node.js",
+        "Expérience avec les bases de données SQL/NoSQL",
+        "Connaissance des pratiques DevOps"
+      ],
+      "benefits": [
+        "Télétravail flexible",
+        "Formation continue",
+        "Participation aux bénéfices"
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Chef de Projet Digital",
+      "company": "Digital Agency",
+      "location": "Lyon",
+      "type": "CDI",
+      "description": "Pilotage de projets de transformation digitale pour nos clients grands comptes. Vous encadrez une équipe de consultants et assurez la relation client.",
+      "requirements": [
+        "7+ ans d'expérience en gestion de projet",
+        "Certification PMP ou équivalent",
+        "Expérience en transformation digitale",
+        "Excellent relationnel client"
+      ],
+      "benefits": [
+        "Voiture de fonction",
+        "Mutuelle premium",
+        "Évolution rapide"
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Data Scientist",
+      "company": "AI Innovation",
+      "location": "Remote",
+      "type": "CDI",
+      "description": "Développement de modèles d'intelligence artificielle et d'algorithmes de machine learning pour nos solutions produits.",
+      "requirements": [
+        "Master en Data Science ou équivalent",
+        "Python, R, SQL, TensorFlow",
+        "Expérience en ML/AI",
+        "Anglais courant"
+      ],
+      "benefits": [
+        "100% remote",
+        "Stock options",
+        "Conférences payées"
+      ]
+    }
+  ],
+  "message_templates": {
+    "connection_reasons": [
+      "Nous avons des connexions communes",
+      "Même secteur d'activité",
+      "Profil professionnel intéressant",
+      "Même formation/école",
+      "Événement en commun"
+    ],
+    "email_purposes": [
+      "Demande de conseil",
+      "Proposition de collaboration",
+      "Demande d'informations secteur",
+      "Opportunité professionnelle",
+      "Échange d'expériences"
+    ]
+  }
+}

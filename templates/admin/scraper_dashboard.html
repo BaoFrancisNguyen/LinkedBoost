@@ -1,0 +1,399 @@
+<!-- templates/admin/scraper_dashboard.html -->
+{% extends "base.html" %}
+
+{% block title %}Administration Scraping - LinkedBoost{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h2>
+                <i class="fas fa-robot me-2 text-primary"></i>Administration du Scraping
+            </h2>
+            <div>
+                <button class="btn btn-success" onclick="startScraping()">
+                    <i class="fas fa-play me-2"></i>Lancer le scraping
+                </button>
+                <button class="btn btn-info ms-2" onclick="refreshStats()">
+                    <i class="fas fa-sync me-2"></i>Actualiser
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistiques globales -->
+    <div class="col-12 mb-4">
+        <div class="row g-3">
+            <div class="col-md-3">
+                <div class="card bg-primary text-white">
+                    <div class="card-body text-center">
+                        <i class="fas fa-briefcase fa-2x mb-2"></i>
+                        <h4 id="totalJobs">-</h4>
+                        <small>Offres totales</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-success text-white">
+                    <div class="card-body text-center">
+                        <i class="fas fa-clock fa-2x mb-2"></i>
+                        <h4 id="lastScrape">-</h4>
+                        <small>Dernier scraping</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-info text-white">
+                    <div class="card-body text-center">
+                        <i class="fas fa-database fa-2x mb-2"></i>
+                        <h4 id="embeddingsCount">-</h4>
+                        <small>Embeddings</small>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card bg-warning text-white">
+                    <div class="card-body text-center">
+                        <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                        <h4 id="errorCount">-</h4>
+                        <small>Erreurs</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Configuration du scraping -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-cog me-2"></i>Configuration du Scraping
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="scrapingConfigForm">
+                    <div class="mb-3">
+                        <label class="form-label">Sources à scraper</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="wttj" checked>
+                            <label class="form-check-label" for="wttj">
+                                Welcome to the Jungle
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="linkedin" disabled>
+                            <label class="form-check-label" for="linkedin">
+                                LinkedIn (Bientôt disponible)
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="indeed" disabled>
+                            <label class="form-check-label" for="indeed">
+                                Indeed (Bientôt disponible)
+                            </label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="maxJobs" class="form-label">Nombre max d'offres par scraping</label>
+                        <input type="number" class="form-control" id="maxJobs" value="100" min="10" max="500">
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="delay" class="form-label">Délai entre requêtes (secondes)</label>
+                        <input type="number" class="form-control" id="delay" value="2" min="1" max="10" step="0.5">
+                    </div>
+
+                    <button type="button" class="btn btn-primary" onclick="saveConfig()">
+                        <i class="fas fa-save me-2"></i>Sauvegarder la configuration
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statut des scrapers -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-server me-2"></i>Statut des Scrapers
+                </h5>
+            </div>
+            <div class="card-body">
+                <div id="scrapersStatus">
+                    <!-- Dynamiquement rempli -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Logs de scraping -->
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i>Logs de Scraping
+                </h5>
+                <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs()">
+                    <i class="fas fa-trash me-1"></i>Effacer
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="scrapingLogs" style="height: 300px; overflow-y: auto; background: #f8f9fa; padding: 1rem; border-radius: 0.375rem;">
+                    <p class="text-muted">Aucun log disponible</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Analyse des données -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-bar me-2"></i>Analyse des Données Collectées
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-6">
+                        <h6>Top Technologies</h6>
+                        <div id="topTechnologies">
+                            <!-- Dynamiquement rempli -->
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Distribution des Niveaux</h6>
+                        <div id="experienceLevels">
+                            <!-- Dynamiquement rempli -->
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Top Entreprises</h6>
+                        <div id="topCompanies">
+                            <!-- Dynamiquement rempli -->
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Répartition Remote</h6>
+                        <div id="remoteStats">
+                            <!-- Dynamiquement rempli -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de progression -->
+<div class="modal fade" id="scrapingProgressModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-spinner fa-spin me-2"></i>Scraping en cours
+                </h5>
+            </div>
+            <div class="modal-body text-center">
+                <div class="progress mb-3">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                         role="progressbar" style="width: 0%"></div>
+                </div>
+                <p id="scrapingProgressText">Initialisation...</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let scrapingInterval = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadStats();
+    loadMarketAnalytics();
+});
+
+async function startScraping() {
+    const sources = [];
+    if (document.getElementById('wttj').checked) sources.push('wttj');
+    if (document.getElementById('linkedin').checked) sources.push('linkedin');
+    if (document.getElementById('indeed').checked) sources.push('indeed');
+    
+    if (sources.length === 0) {
+        alert('Veuillez sélectionner au moins une source');
+        return;
+    }
+    
+    try {
+        // Afficher modal de progression
+        const modal = new bootstrap.Modal(document.getElementById('scrapingProgressModal'));
+        modal.show();
+        
+        addLog('🚀 Démarrage du scraping...');
+        
+        const response = await fetch('/api/scraping/start', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                sources: sources,
+                max_jobs: parseInt(document.getElementById('maxJobs').value),
+                delay: parseFloat(document.getElementById('delay').value)
+            })
+        });
+        
+        const result = await response.json();
+        
+        modal.hide();
+        
+        if (result.success) {
+            addLog(`✅ Scraping terminé : ${result.stats.total_jobs} offres collectées`);
+            loadStats();
+            loadMarketAnalytics();
+        } else {
+            addLog(`❌ Erreur scraping : ${result.error}`);
+        }
+        
+    } catch (error) {
+        document.querySelector('#scrapingProgressModal .modal-backdrop')?.remove();
+        addLog(`❌ Erreur : ${error.message}`);
+    }
+}
+
+async function loadStats() {
+    try {
+        const response = await fetch('/api/status');
+        const data = await response.json();
+        
+        // Mise à jour des statistiques
+        document.getElementById('totalJobs').textContent = 
+            data.features?.total_jobs || '0';
+        
+        // Mise à jour du statut des scrapers
+        updateScrapersStatus(data);
+        
+    } catch (error) {
+        console.error('Erreur chargement stats:', error);
+    }
+}
+
+async function loadMarketAnalytics() {
+    try {
+        const response = await fetch('/api/analytics/market');
+        const data = await response.json();
+        
+        if (data.success) {
+            displayMarketAnalytics(data.insights);
+        }
+        
+    } catch (error) {
+        console.error('Erreur chargement analytics:', error);
+    }
+}
+
+function displayMarketAnalytics(insights) {
+    // Top technologies
+    const techDiv = document.getElementById('topTechnologies');
+    if (insights.top_technologies) {
+        techDiv.innerHTML = insights.top_technologies.slice(0, 5).map(tech => 
+            `<div class="d-flex justify-content-between mb-1">
+                <span>${tech.name}</span>
+                <span class="badge bg-primary">${tech.count}</span>
+            </div>`
+        ).join('');
+    }
+    
+    // Distribution des niveaux d'expérience
+    const expDiv = document.getElementById('experienceLevels');
+    if (insights.experience_distribution) {
+        expDiv.innerHTML = insights.experience_distribution.map(exp => 
+            `<div class="d-flex justify-content-between mb-1">
+                <span>${exp.level}</span>
+                <span class="badge bg-secondary">${exp.count}</span>
+            </div>`
+        ).join('');
+    }
+    
+    // Top entreprises
+    const compDiv = document.getElementById('topCompanies');
+    if (insights.top_hiring_companies) {
+        compDiv.innerHTML = insights.top_hiring_companies.slice(0, 5).map(comp => 
+            `<div class="d-flex justify-content-between mb-1">
+                <span>${comp.name}</span>
+                <span class="badge bg-success">${comp.jobs}</span>
+            </div>`
+        ).join('');
+    }
+    
+    // Stats remote
+    const remoteDiv = document.getElementById('remoteStats');
+    if (insights.remote_percentage !== undefined) {
+        remoteDiv.innerHTML = `
+            <div class="progress mb-2">
+                <div class="progress-bar bg-info" style="width: ${insights.remote_percentage}%"></div>
+            </div>
+            <small>${insights.remote_percentage}% des offres proposent du remote</small>
+        `;
+    }
+}
+
+function updateScrapersStatus(data) {
+    const statusDiv = document.getElementById('scrapersStatus');
+    const scrapers = [
+        { name: 'Welcome to the Jungle', id: 'wttj', status: 'active' },
+        { name: 'LinkedIn', id: 'linkedin', status: 'development' },
+        { name: 'Indeed', id: 'indeed', status: 'development' }
+    ];
+    
+    statusDiv.innerHTML = scrapers.map(scraper => {
+        const statusClass = scraper.status === 'active' ? 'success' : 'warning';
+        const statusText = scraper.status === 'active' ? 'Actif' : 'En développement';
+        
+        return `
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <span>${scraper.name}</span>
+                <span class="badge bg-${statusClass}">${statusText}</span>
+            </div>
+        `;
+    }).join('');
+}
+
+function addLog(message) {
+    const logsDiv = document.getElementById('scrapingLogs');
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = document.createElement('div');
+    logEntry.innerHTML = `<span class="text-muted">[${timestamp}]</span> ${message}`;
+    logEntry.className = 'mb-1';
+    
+    logsDiv.appendChild(logEntry);
+    logsDiv.scrollTop = logsDiv.scrollHeight;
+}
+
+function clearLogs() {
+    document.getElementById('scrapingLogs').innerHTML = '<p class="text-muted">Logs effacés</p>';
+}
+
+function saveConfig() {
+    addLog('💾 Configuration sauvegardée');
+    // Ici, vous pourriez envoyer la config au serveur
+}
+
+function refreshStats() {
+    addLog('🔄 Actualisation des statistiques...');
+    loadStats();
+    loadMarketAnalytics();
+}
+
+// Auto-refresh toutes les 30 secondes
+setInterval(() => {
+    loadStats();
+}, 30000);
+</script>
+{% endblock %}
+

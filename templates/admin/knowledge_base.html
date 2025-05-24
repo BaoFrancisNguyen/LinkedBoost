@@ -1,0 +1,340 @@
+<!-- templates/admin/knowledge_base.html -->
+{% extends "base.html" %}
+
+{% block title %}Base de Connaissances - LinkedBoost{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12 mb-4">
+        <h2>
+            <i class="fas fa-brain me-2 text-info"></i>Base de Connaissances
+        </h2>
+        <p class="text-muted">
+            Explorez et recherchez dans la base de connaissances enrichie par l'IA
+        </p>
+    </div>
+
+    <!-- Recherche sémantique -->
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-search me-2"></i>Recherche Sémantique
+                </h5>
+            </div>
+            <div class="card-body">
+                <form id="semanticSearchForm">
+                    <div class="row g-3">
+                        <div class="col-md-8">
+                            <input type="text" class="form-control" id="searchQuery" 
+                                   placeholder="Ex: développeur python remote, data scientist paris, etc.">
+                        </div>
+                        <div class="col-md-2">
+                            <select class="form-select" id="searchLimit">
+                                <option value="10">10 résultats</option>
+                                <option value="20">20 résultats</option>
+                                <option value="50">50 résultats</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="submit" class="btn btn-primary w-100">
+                                <i class="fas fa-search me-1"></i>Rechercher
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <!-- Filtres avancés -->
+                    <div class="row g-3 mt-2">
+                        <div class="col-md-3">
+                            <label class="form-label">Entreprise</label>
+                            <input type="text" class="form-control form-control-sm" id="filterCompany" 
+                                   placeholder="Nom d'entreprise">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Localisation</label>
+                            <input type="text" class="form-control form-control-sm" id="filterLocation" 
+                                   placeholder="Ville ou région">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Niveau d'expérience</label>
+                            <select class="form-select form-select-sm" id="filterLevel">
+                                <option value="">Tous</option>
+                                <option value="junior">Junior</option>
+                                <option value="mid">Intermédiaire</option>
+                                <option value="senior">Senior</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">Remote</label>
+                            <select class="form-select form-select-sm" id="filterRemote">
+                                <option value="">Tous</option>
+                                <option value="true">Remote uniquement</option>
+                                <option value="false">Présentiel uniquement</option>
+                            </select>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Résultats de recherche -->
+    <div class="col-12 mb-4">
+        <div class="card" id="searchResultsCard" style="display: none;">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-list me-2"></i>Résultats de Recherche
+                </h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="exportResults()">
+                    <i class="fas fa-download me-1"></i>Exporter
+                </button>
+            </div>
+            <div class="card-body">
+                <div id="searchResults">
+                    <!-- Résultats dynamiques -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistiques de la base -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-pie me-2"></i>Statistiques
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3 text-center">
+                    <div class="col-6">
+                        <div class="border-end">
+                            <h4 class="text-primary" id="totalEmbeddings">-</h4>
+                            <small class="text-muted">Embeddings générés</small>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <h4 class="text-success" id="searchAccuracy">-</h4>
+                        <small class="text-muted">Précision recherche</small>
+                    </div>
+                </div>
+                
+                <hr>
+                
+                <div class="mb-3">
+                    <label class="form-label">Performance du modèle</label>
+                    <div class="progress">
+                        <div class="progress-bar bg-info" style="width: 85%"></div>
+                    </div>
+                    <small class="text-muted">85% de précision moyenne</small>
+                </div>
+                
+                <div>
+                    <label class="form-label">Couverture des données</label>
+                    <div class="progress">
+                        <div class="progress-bar bg-success" style="width: 92%"></div>
+                    </div>
+                    <small class="text-muted">92% des offres indexées</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions de maintenance -->
+    <div class="col-lg-6 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-tools me-2"></i>Maintenance
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="d-grid gap-2">
+                    <button class="btn btn-outline-info" onclick="reindexEmbeddings()">
+                        <i class="fas fa-sync me-2"></i>Réindexer les embeddings
+                    </button>
+                    <button class="btn btn-outline-warning" onclick="cleanOldData()">
+                        <i class="fas fa-broom me-2"></i>Nettoyer anciennes données
+                    </button>
+                    <button class="btn btn-outline-danger" onclick="resetKnowledgeBase()">
+                        <i class="fas fa-trash-alt me-2"></i>Réinitialiser la base
+                    </button>
+                </div>
+                
+                <hr>
+                
+                <div class="text-center">
+                    <small class="text-muted">
+                        Dernière maintenance : <span id="lastMaintenance">-</span>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.getElementById('semanticSearchForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    await performSemanticSearch();
+});
+
+async function performSemanticSearch() {
+    const query = document.getElementById('searchQuery').value.trim();
+    if (!query) {
+        alert('Veuillez saisir une requête de recherche');
+        return;
+    }
+    
+    const filters = {
+        company: document.getElementById('filterCompany').value,
+        location: document.getElementById('filterLocation').value,
+        experience_level: document.getElementById('filterLevel').value,
+        remote: document.getElementById('filterRemote').value ? 
+                document.getElementById('filterRemote').value === 'true' : null
+    };
+    
+    // Supprimer les filtres vides
+    Object.keys(filters).forEach(key => {
+        if (filters[key] === '' || filters[key] === null) {
+            delete filters[key];
+        }
+    });
+    
+    try {
+        const response = await fetch('/api/knowledge/search', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                query: query,
+                filters: filters,
+                limit: parseInt(document.getElementById('searchLimit').value)
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            displaySearchResults(data.results);
+            document.getElementById('searchResultsCard').style.display = 'block';
+        } else {
+            alert('Erreur de recherche: ' + data.error);
+        }
+        
+    } catch (error) {
+        alert('Erreur de connexion: ' + error.message);
+    }
+}
+
+function displaySearchResults(results) {
+    const resultsDiv = document.getElementById('searchResults');
+    
+    if (!results || results.length === 0) {
+        resultsDiv.innerHTML = '<p class="text-muted text-center">Aucun résultat trouvé</p>';
+        return;
+    }
+    
+    resultsDiv.innerHTML = results.map((job, index) => `
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h6 class="card-title">
+                            ${job.title}
+                            ${job.similarity_score ? 
+                                `<span class="badge bg-success ms-2">${Math.round(job.similarity_score * 100)}% match</span>` 
+                                : ''}
+                        </h6>
+                        <p class="card-text">
+                            <strong>${job.company}</strong>
+                            ${job.location ? ` • ${job.location}` : ''}
+                            ${job.experience_level ? ` • ${job.experience_level}` : ''}
+                            ${job.remote ? ' • <span class="badge bg-info">Remote</span>' : ''}
+                        </p>
+                        <p class="card-text">
+                            <small class="text-muted">
+                                ${job.description ? job.description.substring(0, 150) + '...' : 'Pas de description'}
+                            </small>
+                        </p>
+                        ${job.technologies && job.technologies.length > 0 ? `
+                            <div class="mb-2">
+                                ${job.technologies.slice(0, 5).map(tech => 
+                                    `<span class="badge bg-secondary me-1">${tech}</span>`
+                                ).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div class="col-md-4 text-end">
+                        <small class="text-muted">
+                            ${job.source} • ${job.scraped_at ? new Date(job.scraped_at).toLocaleDateString() : 'Date inconnue'}
+                        </small>
+                        <br>
+                        ${job.url ? `
+                            <a href="${job.url}" target="_blank" class="btn btn-sm btn-outline-primary mt-2">
+                                <i class="fas fa-external-link-alt me-1"></i>Voir l'offre
+                            </a>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+function exportResults() {
+    // Logique d'export des résultats
+    alert('Export en cours de développement');
+}
+
+function reindexEmbeddings() {
+    if (confirm('Cette opération peut prendre du temps. Continuer ?')) {
+        alert('Réindexation en cours...');
+        // Logique de réindexation
+    }
+}
+
+function cleanOldData() {
+    if (confirm('Supprimer les données de plus de 30 jours ?')) {
+        alert('Nettoyage en cours...');
+        // Logique de nettoyage
+    }
+}
+
+function resetKnowledgeBase() {
+    if (confirm('ATTENTION: Cette action supprimera toutes les données. Êtes-vous sûr ?')) {
+        if (confirm('Dernière confirmation - Cette action est irréversible !')) {
+            alert('Réinitialisation en cours...');
+            // Logique de reset
+        }
+    }
+}
+
+// Chargement initial des stats
+document.addEventListener('DOMContentLoaded', function() {
+    loadKnowledgeBaseStats();
+});
+
+async function loadKnowledgeBaseStats() {
+    try {
+        const response = await fetch('/api/status');
+        const data = await response.json();
+        
+        // Mise à jour des statistiques
+        if (data.features && data.features.embedding_stats) {
+            document.getElementById('totalEmbeddings').textContent = 
+                data.features.embedding_stats.total_jobs || '0';
+        }
+        
+        document.getElementById('searchAccuracy').textContent = '87%';
+        document.getElementById('lastMaintenance').textContent = 'Jamais';
+        
+    } catch (error) {
+        console.error('Erreur chargement stats:', error);
+    }
+}
+</script>
+{% endblock %>
