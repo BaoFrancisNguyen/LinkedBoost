@@ -1,323 +1,180 @@
-# config.py - Configuration complète pour LinkedBoost
+# config.py - Configuration complète pour LinkedBoost avec Selenium
 import os
 from dotenv import load_dotenv
 
-# Charger les variables d'environnement
 load_dotenv()
 
 class Config:
-    """Configuration de base pour LinkedBoost"""
-    
-    # ===========================
-    # CONFIGURATION FLASK
-    # ===========================
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'linkedboost-dev-key-change-in-production'
+    # Configuration de base
+    SECRET_KEY = os.environ.get('SECRET_KEY') or 'linkedboost-dev-key'
+    OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL') or 'http://localhost:11434'
+    OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL') or 'mistral:latest'
     DEBUG = os.environ.get('FLASK_DEBUG', 'True').lower() == 'true'
-    HOST = os.environ.get('FLASK_HOST', '0.0.0.0')
-    PORT = int(os.environ.get('FLASK_PORT', 5000))
     
-    # ===========================
-    # CONFIGURATION OLLAMA
-    # ===========================
-    OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434')
-    OLLAMA_MODEL = os.environ.get('OLLAMA_MODEL', 'mistral:latest')
-    OLLAMA_TIMEOUT = int(os.environ.get('OLLAMA_TIMEOUT', 60))
-    
-    # Modèles d'embeddings
-    OLLAMA_EMBEDDING_MODEL = os.environ.get('OLLAMA_EMBEDDING_MODEL', 'nomic-embed-text:latest')
-    
-    # ===========================
-    # CONFIGURATION SCRAPING
-    # ===========================
+    # Configuration scraping Selenium
     SCRAPING_ENABLED = os.environ.get('SCRAPING_ENABLED', 'True').lower() == 'true'
     SCRAPING_INTERVAL_HOURS = int(os.environ.get('SCRAPING_INTERVAL_HOURS', 24))
-    MAX_JOBS_PER_SCRAPE = int(os.environ.get('MAX_JOBS_PER_SCRAPE', 100))
+    MAX_JOBS_PER_SCRAPE = int(os.environ.get('MAX_JOBS_PER_SCRAPE', 50))
     
-    # Rate limiting pour le scraping
-    REQUEST_DELAY = float(os.environ.get('REQUEST_DELAY', 2.0))  # Secondes entre requêtes
-    CONCURRENT_REQUESTS = int(os.environ.get('CONCURRENT_REQUESTS', 1))  # Requêtes simultanées
-    
-    # Retry et timeouts
-    MAX_RETRIES = int(os.environ.get('MAX_RETRIES', 3))
-    SCRAPING_TIMEOUT = int(os.environ.get('SCRAPING_TIMEOUT', 30))
-    
-    # ===========================
-    # CONFIGURATION SELENIUM
-    # ===========================
+    # Configuration Selenium
     SELENIUM_HEADLESS = os.environ.get('SELENIUM_HEADLESS', 'True').lower() == 'true'
-    SELENIUM_TIMEOUT = int(os.environ.get('SELENIUM_TIMEOUT', 10))
-    SELENIUM_PAGE_LOAD_TIMEOUT = int(os.environ.get('SELENIUM_PAGE_LOAD_TIMEOUT', 30))
-    SELENIUM_IMPLICIT_WAIT = int(os.environ.get('SELENIUM_IMPLICIT_WAIT', 5))
+    SELENIUM_TIMEOUT = int(os.environ.get('SELENIUM_TIMEOUT', 30))
+    SELENIUM_PAGE_LOAD_TIMEOUT = int(os.environ.get('SELENIUM_PAGE_LOAD_TIMEOUT', 45))
+    SELENIUM_IMPLICIT_WAIT = int(os.environ.get('SELENIUM_IMPLICIT_WAIT', 10))
     
-    # User Agent pour le scraping
-    USER_AGENT = os.environ.get('USER_AGENT', 
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+    # User Agent
+    USER_AGENT = os.environ.get('USER_AGENT') or 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     
-    # Chrome options avancées
-    CHROME_BINARY_PATH = os.environ.get('CHROME_BINARY_PATH')  # Chemin custom vers Chrome
-    CHROMEDRIVER_PATH = os.environ.get('CHROMEDRIVER_PATH')   # Chemin custom vers ChromeDriver
+    # Credentials LinkedIn
+    LINKEDIN_EMAIL = os.environ.get('LINKEDIN_EMAIL', '')
+    LINKEDIN_PASSWORD = os.environ.get('LINKEDIN_PASSWORD', '')
     
-    # ===========================
-    # CONFIGURATION BASE DE DONNÉES
-    # ===========================
-    # Base de données principale
-    DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///data/linkedboost.db')
+    # Rate limiting
+    REQUEST_DELAY = float(os.environ.get('REQUEST_DELAY', 2.0))
+    RANDOM_DELAY_MIN = float(os.environ.get('RANDOM_DELAY_MIN', 1.0))
+    RANDOM_DELAY_MAX = float(os.environ.get('RANDOM_DELAY_MAX', 5.0))
+    CONCURRENT_REQUESTS = int(os.environ.get('CONCURRENT_REQUESTS', 1))
     
-    # Base de données pour les embeddings
-    EMBEDDINGS_DB_PATH = os.environ.get('EMBEDDINGS_DB_PATH', 'data/embeddings.db')
+    # Configuration Chrome
+    CHROME_OPTIONS = {
+        'window_size': os.environ.get('CHROME_WINDOW_SIZE', '1920,1080'),
+        'disable_images': os.environ.get('CHROME_DISABLE_IMAGES', 'False').lower() == 'true',
+        'disable_gpu': os.environ.get('CHROME_DISABLE_GPU', 'True').lower() == 'true',
+        'no_sandbox': os.environ.get('CHROME_NO_SANDBOX', 'True').lower() == 'true'
+    }
     
-    # Base de données pour la recherche simple
-    SIMPLE_SEARCH_DB_PATH = os.environ.get('SIMPLE_SEARCH_DB_PATH', 'data/simple_search.db')
+    # Base de données
+    DATABASE_URL = os.environ.get('DATABASE_URL') or 'sqlite:///data/linkedboost.db'
     
-    # ChromaDB (pour les embeddings vectoriels)
-    CHROMA_DB_PATH = os.environ.get('CHROMA_DB_PATH', 'data/chroma_db')
-    CHROMA_COLLECTION_NAME = os.environ.get('CHROMA_COLLECTION_NAME', 'linkedboost_jobs')
+    # Chemins
+    DATA_DIR = os.environ.get('DATA_DIR') or './data'
+    REPORTS_DIR = os.environ.get('REPORTS_DIR') or './data/reports'
+    LOGS_DIR = os.environ.get('LOGS_DIR') or './logs'
     
-    # ===========================
-    # CONFIGURATION EMBEDDINGS & RAG
-    # ===========================
-    # Modèle d'embeddings (sentence-transformers)
-    EMBEDDING_MODEL = os.environ.get('EMBEDDING_MODEL', 'all-MiniLM-L6-v2')
+    # Configuration de logging
+    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO')
+    LOG_TO_FILE = os.environ.get('LOG_TO_FILE', 'True').lower() == 'true'
     
-    # Méthode de recherche ('ollama', 'tfidf', 'sentence_transformers')
-    SEARCH_METHOD = os.environ.get('SEARCH_METHOD', 'auto')  # auto = détection automatique
+    # Sources de scraping
+    ENABLED_SCRAPERS = os.environ.get('ENABLED_SCRAPERS', 'wttj,indeed').split(',')
     
-    # Paramètres de recherche
-    SEARCH_SIMILARITY_THRESHOLD = float(os.environ.get('SEARCH_SIMILARITY_THRESHOLD', 0.7))
-    MAX_SEARCH_RESULTS = int(os.environ.get('MAX_SEARCH_RESULTS', 20))
+    # Limites par source
+    WTTJ_MAX_JOBS = int(os.environ.get('WTTJ_MAX_JOBS', 30))
+    INDEED_MAX_JOBS = int(os.environ.get('INDEED_MAX_JOBS', 20))
+    LINKEDIN_MAX_JOBS = int(os.environ.get('LINKEDIN_MAX_JOBS', 15))
     
-    # Cache des embeddings
-    CACHE_EMBEDDINGS = os.environ.get('CACHE_EMBEDDINGS', 'True').lower() == 'true'
-    EMBEDDING_CACHE_SIZE = int(os.environ.get('EMBEDDING_CACHE_SIZE', 1000))
-    
-    # ===========================
-    # CONFIGURATION LOGGING
-    # ===========================
-    LOG_LEVEL = os.environ.get('LOG_LEVEL', 'INFO').upper()
-    LOG_FILE = os.environ.get('LOG_FILE', 'logs/linkedboost.log')
-    LOG_MAX_BYTES = int(os.environ.get('LOG_MAX_BYTES', 10485760))  # 10MB
-    LOG_BACKUP_COUNT = int(os.environ.get('LOG_BACKUP_COUNT', 5))
-    
-    # Logs spécifiques
-    SCRAPING_LOG_FILE = os.environ.get('SCRAPING_LOG_FILE', 'logs/scraping.log')
-    ERROR_LOG_FILE = os.environ.get('ERROR_LOG_FILE', 'logs/errors.log')
-    
-    # ===========================
-    # CONFIGURATION SÉCURITÉ
-    # ===========================
-    # Protection CORS
-    CORS_ORIGINS = os.environ.get('CORS_ORIGINS', '*').split(',')
-    
-    # Rate limiting API
-    API_RATE_LIMIT = os.environ.get('API_RATE_LIMIT', '100 per hour')
-    API_RATE_LIMIT_STORAGE_URL = os.environ.get('API_RATE_LIMIT_STORAGE_URL')
-    
-    # Admin access (optionnel)
-    ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD')  # Si défini, protège l'admin
-    
-    # ===========================
-    # CONFIGURATION CACHE
-    # ===========================
-    CACHE_TYPE = os.environ.get('CACHE_TYPE', 'simple')  # simple, redis, filesystem
-    CACHE_DEFAULT_TIMEOUT = int(os.environ.get('CACHE_DEFAULT_TIMEOUT', 300))  # 5 minutes
-    
-    # Redis (si utilisé)
-    REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
-    
-    # ===========================
-    # CONFIGURATION BUSINESS
-    # ===========================
-    # Paramètres de génération IA
-    DEFAULT_TEMPERATURE = float(os.environ.get('DEFAULT_TEMPERATURE', 0.7))
-    DEFAULT_MAX_TOKENS = int(os.environ.get('DEFAULT_MAX_TOKENS', 500))
-    
-    # Limites utilisateur
-    MAX_GENERATIONS_PER_HOUR = int(os.environ.get('MAX_GENERATIONS_PER_HOUR', 50))
-    MAX_PROFILE_ANALYSIS_PER_DAY = int(os.environ.get('MAX_PROFILE_ANALYSIS_PER_DAY', 10))
-    
-    # ===========================
-    # CONFIGURATION MONITORING
-    # ===========================
-    HEALTH_CHECK_INTERVAL = int(os.environ.get('HEALTH_CHECK_INTERVAL', 30))  # secondes
-    METRICS_ENABLED = os.environ.get('METRICS_ENABLED', 'True').lower() == 'true'
-    
-    # Alertes (optionnel)
-    ALERT_EMAIL = os.environ.get('ALERT_EMAIL')
-    SMTP_SERVER = os.environ.get('SMTP_SERVER')
-    SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
-    SMTP_USERNAME = os.environ.get('SMTP_USERNAME')
-    SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD')
-    
-    # ===========================
-    # CONFIGURATION SOURCES DE SCRAPING
-    # ===========================
-    # Sources activées
-    ENABLED_SCRAPERS = os.environ.get('ENABLED_SCRAPERS', 'wttj').split(',')
-    
-    # Configuration spécifique WTTJ
-    WTTJ_MAX_PAGES = int(os.environ.get('WTTJ_MAX_PAGES', 5))
-    WTTJ_SEARCH_TERMS = os.environ.get('WTTJ_SEARCH_TERMS', 
-        'développeur,data,marketing,commercial,product').split(',')
-    
-    # Configuration LinkedIn (future)
-    LINKEDIN_ENABLED = os.environ.get('LINKEDIN_ENABLED', 'False').lower() == 'true'
-    LINKEDIN_USERNAME = os.environ.get('LINKEDIN_USERNAME')
-    LINKEDIN_PASSWORD = os.environ.get('LINKEDIN_PASSWORD')
-    
-    # Configuration Indeed (future)
-    INDEED_ENABLED = os.environ.get('INDEED_ENABLED', 'False').lower() == 'true'
-    INDEED_LOCATION = os.environ.get('INDEED_LOCATION', 'France')
-    
-    # ===========================
-    # MÉTHODES UTILITAIRES
-    # ===========================
+    # Seuils
+    MAX_PAGES_PER_SEARCH = int(os.environ.get('MAX_PAGES_PER_SEARCH', 3))
+    MAX_DAILY_REQUESTS = int(os.environ.get('MAX_DAILY_REQUESTS', 1000))
+    COOLDOWN_AFTER_ERROR = int(os.environ.get('COOLDOWN_AFTER_ERROR', 60))
     
     @classmethod
-    def get_database_config(cls):
-        """Retourne la configuration de base de données"""
-        return {
-            'main_db': cls.DATABASE_URL,
-            'embeddings_db': cls.EMBEDDINGS_DB_PATH,
-            'search_db': cls.SIMPLE_SEARCH_DB_PATH,
-            'chroma_db': cls.CHROMA_DB_PATH
-        }
-    
-    @classmethod
-    def get_ollama_config(cls):
-        """Retourne la configuration Ollama"""
-        return {
-            'base_url': cls.OLLAMA_BASE_URL,
-            'model': cls.OLLAMA_MODEL,
-            'embedding_model': cls.OLLAMA_EMBEDDING_MODEL,
-            'timeout': cls.OLLAMA_TIMEOUT
-        }
-    
-    @classmethod
-    def get_selenium_config(cls):
-        """Retourne la configuration Selenium"""
-        return {
-            'headless': cls.SELENIUM_HEADLESS,
-            'timeout': cls.SELENIUM_TIMEOUT,
-            'page_load_timeout': cls.SELENIUM_PAGE_LOAD_TIMEOUT,
-            'implicit_wait': cls.SELENIUM_IMPLICIT_WAIT,
-            'user_agent': cls.USER_AGENT,
-            'chrome_binary': cls.CHROME_BINARY_PATH,
-            'chromedriver_path': cls.CHROMEDRIVER_PATH
-        }
-    
-    @classmethod
-    def get_scraping_config(cls):
-        """Retourne la configuration de scraping"""
-        return {
-            'enabled': cls.SCRAPING_ENABLED,
-            'interval_hours': cls.SCRAPING_INTERVAL_HOURS,
-            'max_jobs': cls.MAX_JOBS_PER_SCRAPE,
-            'request_delay': cls.REQUEST_DELAY,
-            'concurrent_requests': cls.CONCURRENT_REQUESTS,
-            'max_retries': cls.MAX_RETRIES,
-            'timeout': cls.SCRAPING_TIMEOUT,
-            'enabled_scrapers': cls.ENABLED_SCRAPERS
-        }
+    def get_chrome_options(cls):
+        """Retourne les options Chrome configurées"""
+        from selenium.webdriver.chrome.options import Options
+        
+        options = Options()
+        
+        # Mode headless ou visible
+        if cls.SELENIUM_HEADLESS:
+            options.add_argument('--headless')
+            print("🔧 Mode HEADLESS: Navigateur invisible")
+        else:
+            print("🔧 Mode VISIBLE: Navigateur sera affiché")
+        
+        # Configuration de base
+        options.add_argument(f'--user-agent={cls.USER_AGENT}')
+        options.add_argument(f'--window-size={cls.CHROME_OPTIONS["window_size"]}')
+        
+        # Options anti-détection
+        options.add_argument('--disable-blink-features=AutomationControlled')
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+        
+        # Performance et sécurité
+        if cls.CHROME_OPTIONS['no_sandbox']:
+            options.add_argument('--no-sandbox')
+        
+        if cls.CHROME_OPTIONS['disable_gpu']:
+            options.add_argument('--disable-gpu')
+            
+        options.add_argument('--disable-dev-shm-usage')
+        options.add_argument('--disable-extensions')
+        options.add_argument('--disable-plugins')
+        
+        # Images
+        if cls.CHROME_OPTIONS['disable_images']:
+            prefs = {"profile.managed_default_content_settings.images": 2}
+            options.add_experimental_option("prefs", prefs)
+        
+        # Langue française
+        options.add_argument('--lang=fr-FR')
+        options.add_experimental_option('prefs', {'intl.accept_languages': 'fr-FR,fr'})
+        
+        return options
     
     @classmethod
     def validate_config(cls):
-        """Valide la configuration et retourne les erreurs"""
+        """Valide la configuration"""
         errors = []
-        warnings = []
         
-        # Vérifications critiques
-        if not cls.SECRET_KEY or cls.SECRET_KEY == 'linkedboost-dev-key-change-in-production':
-            if not cls.DEBUG:
-                errors.append("SECRET_KEY doit être définie en production")
-            else:
-                warnings.append("SECRET_KEY par défaut utilisée en développement")
+        if cls.MAX_JOBS_PER_SCRAPE <= 0:
+            errors.append("MAX_JOBS_PER_SCRAPE doit être positif")
         
-        # Vérifications Ollama
-        if not cls.OLLAMA_BASE_URL:
-            errors.append("OLLAMA_BASE_URL est requis")
+        if cls.REQUEST_DELAY < 0:
+            errors.append("REQUEST_DELAY doit être positif ou nul")
         
-        if not cls.OLLAMA_MODEL:
-            errors.append("OLLAMA_MODEL est requis")
+        if cls.LINKEDIN_EMAIL and not cls.LINKEDIN_PASSWORD:
+            errors.append("LINKEDIN_PASSWORD requis si LINKEDIN_EMAIL est défini")
         
-        # Vérifications scraping
-        if cls.SCRAPING_ENABLED and not cls.ENABLED_SCRAPERS:
-            warnings.append("Scraping activé mais aucun scraper configuré")
+        # Vérifications des répertoires
+        for directory in [cls.DATA_DIR, cls.REPORTS_DIR, cls.LOGS_DIR]:
+            try:
+                os.makedirs(directory, exist_ok=True)
+            except Exception as e:
+                errors.append(f"Impossible de créer le répertoire {directory}: {e}")
         
-        if cls.REQUEST_DELAY < 1.0:
-            warnings.append("REQUEST_DELAY < 1s peut causer des blocages")
-        
-        # Vérifications base de données
-        if 'sqlite' in cls.DATABASE_URL.lower():
-            import os
-            db_dir = os.path.dirname(cls.DATABASE_URL.replace('sqlite:///', ''))
-            if db_dir and not os.path.exists(db_dir):
-                warnings.append(f"Répertoire base de données n'existe pas: {db_dir}")
-        
-        return {
-            'valid': len(errors) == 0,
-            'errors': errors,
-            'warnings': warnings
-        }
+        return errors
     
     @classmethod
-    def get_config_summary(cls):
-        """Retourne un résumé de la configuration"""
-        return {
-            'environment': 'development' if cls.DEBUG else 'production',
-            'ollama_model': cls.OLLAMA_MODEL,
-            'scraping_enabled': cls.SCRAPING_ENABLED,
-            'selenium_headless': cls.SELENIUM_HEADLESS,
-            'enabled_scrapers': cls.ENABLED_SCRAPERS,
-            'search_method': cls.SEARCH_METHOD,
-            'database_type': 'sqlite' if 'sqlite' in cls.DATABASE_URL else 'other'
+    def enable_debug_mode(cls):
+        """Active le mode debug avec navigateur visible"""
+        os.environ['SELENIUM_HEADLESS'] = 'False'
+        os.environ['REQUEST_DELAY'] = '3.0'
+        os.environ['RANDOM_DELAY_MIN'] = '2.0'
+        os.environ['RANDOM_DELAY_MAX'] = '5.0'
+        
+        # Recharger la configuration
+        cls.SELENIUM_HEADLESS = False
+        cls.REQUEST_DELAY = 3.0
+        cls.RANDOM_DELAY_MIN = 2.0
+        cls.RANDOM_DELAY_MAX = 5.0
+        
+        print("🔧 Mode DEBUG activé:")
+        print("   - Navigateur VISIBLE")
+        print("   - Délais LENTS pour observation")
+        print("   - Logs détaillés")
+    
+    @classmethod
+    def get_scraper_config(cls, scraper_name: str) -> dict:
+        """Retourne la configuration spécifique à un scraper"""
+        configs = {
+            'wttj': {
+                'max_jobs': cls.WTTJ_MAX_JOBS,
+                'base_url': 'https://www.welcometothejungle.com',
+                'search_terms': ['développeur', 'data', 'marketing', 'commercial']
+            },
+            'indeed': {
+                'max_jobs': cls.INDEED_MAX_JOBS,
+                'base_url': 'https://fr.indeed.com',
+                'search_terms': ['développeur python', 'data scientist', 'chef de projet']
+            },
+            'linkedin': {
+                'max_jobs': cls.LINKEDIN_MAX_JOBS,
+                'base_url': 'https://www.linkedin.com',
+                'search_terms': ['développeur', 'data scientist', 'chef de projet digital'],
+                'requires_auth': True
+            }
         }
-
-
-class DevelopmentConfig(Config):
-    """Configuration pour le développement"""
-    DEBUG = True
-    LOG_LEVEL = 'DEBUG'
-    SELENIUM_HEADLESS = False  # Voir le navigateur en dev
-    REQUEST_DELAY = 1.0  # Plus rapide en dev
-    SCRAPING_INTERVAL_HOURS = 1  # Scraping plus fréquent
-    
-
-class ProductionConfig(Config):
-    """Configuration pour la production"""
-    DEBUG = False
-    LOG_LEVEL = 'INFO'
-    SELENIUM_HEADLESS = True
-    REQUEST_DELAY = 3.0  # Plus respectueux en prod
-    SCRAPING_INTERVAL_HOURS = 24
-    
-    # Sécurité renforcée
-    CORS_ORIGINS = ['https://your-domain.com']
-    API_RATE_LIMIT = '50 per hour'
-
-
-class TestingConfig(Config):
-    """Configuration pour les tests"""
-    TESTING = True
-    DEBUG = True
-    DATABASE_URL = 'sqlite:///:memory:'
-    SCRAPING_ENABLED = False
-    SELENIUM_HEADLESS = True
-
-
-# Factory de configuration
-def get_config(environment=None):
-    """Retourne la configuration selon l'environnement"""
-    if environment is None:
-        environment = os.environ.get('FLASK_ENV', 'development')
-    
-    configs = {
-        'development': DevelopmentConfig,
-        'production': ProductionConfig,
-        'testing': TestingConfig
-    }
-    
-    return configs.get(environment, DevelopmentConfig)
-
-
-# Configuration globale (pour compatibilité)
-Config = get_config()
+        
+        return configs.get(scraper_name, {})

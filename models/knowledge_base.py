@@ -1,4 +1,4 @@
-# models/knowledge_base.py - Version sans Hugging Face
+# models/knowledge_base.py - Version simplifiée
 import sqlite3
 import json
 from typing import List, Dict, Any, Optional
@@ -8,44 +8,29 @@ from config import Config
 
 logger = logging.getLogger(__name__)
 
-# Import conditionnel selon la solution choisie
-try:
-    from models.embeddings_ollama import OllamaEmbeddingManager
-    EMBEDDING_METHOD = "ollama"
-    logger.info("✅ Utilisation d'Ollama pour les embeddings")
-except ImportError:
-    try:
-        from models.simple_search import SimpleSearchEngine
-        EMBEDDING_METHOD = "tfidf"
-        logger.info("✅ Utilisation de TF-IDF pour la recherche")
-    except ImportError:
-        EMBEDDING_METHOD = "none"
-        logger.warning("⚠️ Aucun moteur de recherche disponible")
-
 class KnowledgeBase:
-    """Base de connaissances sans dépendances Hugging Face"""
+    """Base de connaissances simplifiée pour LinkedBoost"""
     
     def __init__(self):
         self.db_path = "data/knowledge_base.db"
         self.search_engine = None
+        self.embedding_method = "sql"  # Mode par défaut
         
-        # Initialisation du moteur de recherche selon la méthode disponible
-        if EMBEDDING_METHOD == "ollama":
-            try:
-                self.search_engine = OllamaEmbeddingManager()
-                logger.info("🧠 Moteur de recherche Ollama initialisé")
-            except Exception as e:
-                logger.warning(f"Erreur init Ollama: {e}")
-                EMBEDDING_METHOD == "tfidf"
-        
-        if EMBEDDING_METHOD == "tfidf":
-            try:
-                self.search_engine = SimpleSearchEngine()
-                logger.info("🔍 Moteur de recherche TF-IDF initialisé")
-            except Exception as e:
-                logger.warning(f"Erreur init TF-IDF: {e}")
-        
+        # Initialisation conditionnelle du moteur de recherche avancé
+        self._init_search_engine()
         self.create_tables()
+    
+    def _init_search_engine(self):
+        """Initialise le moteur de recherche si disponible"""
+        try:
+            from models.simple_search import SimpleSearchEngine
+            self.search_engine = SimpleSearchEngine()
+            self.embedding_method = "tfidf"
+            logger.info("🔍 Moteur de recherche TF-IDF initialisé")
+        except ImportError as e:
+            logger.info("📝 Utilisation de la recherche SQL de base")
+            self.search_engine = None
+            self.embedding_method = "sql"
     
     def create_tables(self):
         """Crée les tables de base de données principales"""
@@ -81,39 +66,20 @@ class KnowledgeBase:
                 )
             ''')
             
-            # Table des insights marché
+            # Index pour améliorer les performances
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS market_insights (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    insight_type TEXT,  -- salary_trend, skill_demand, etc.
-                    category TEXT,      -- Secteur/fonction
-                    key_metric TEXT,
-                    value REAL,
-                    trend_direction TEXT,  -- up, down, stable
-                    confidence_score REAL,
-                    data_points INTEGER,
-                    metadata TEXT,  -- JSON
-                    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
+                CREATE INDEX IF NOT EXISTS idx_company 
+                ON job_offers_main(company)
             ''')
             
-            # Table des profils d'entreprise
             cursor.execute('''
-                CREATE TABLE IF NOT EXISTS company_profiles (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT UNIQUE,
-                    normalized_name TEXT,
-                    industry TEXT,
-                    size TEXT,
-                    description TEXT,
-                    culture_keywords TEXT,  -- JSON
-                    benefits TEXT,          -- JSON
-                    tech_stack TEXT,        -- JSON
-                    hiring_trends TEXT,     -- JSON
-                    linkedin_url TEXT,
-                    website_url TEXT,
-                    last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
+                CREATE INDEX IF NOT EXISTS idx_scraped_at 
+                ON job_offers_main(scraped_at)
+            ''')
+            
+            cursor.execute('''
+                CREATE INDEX IF NOT EXISTS idx_active 
+                ON job_offers_main(is_active)
             ''')
             
             conn.commit()
@@ -131,11 +97,11 @@ class KnowledgeBase:
             success = self.store_job_main(job_data)
             
             # Stockage dans le moteur de recherche si disponible
-            if success and self.search_engine:
-                if EMBEDDING_METHOD == "ollama":
-                    await self.search_engine.store_job_with_embedding(job_data)
-                elif EMBEDDING_METHOD == "tfidf":
+            if success and self.search_engine and self.embedding_method == "tfidf":
+                try:
                     self.search_engine.store_job(job_data)
+                except Exception as e:
+                    logger.warning(f"Erreur indexation TF-IDF: {e}")
             
             return success
             
@@ -154,6 +120,7 @@ class KnowledgeBase:
             
             cursor.execute('SELECT 1 FROM job_offers_main WHERE hash_id = ?', (hash_id,))
             if cursor.fetchone():
+                logger.debug(f"Offre déjà existante: {job_data.get('title', 'Sans titre')}")
                 return False  # Déjà existant
             
             # Insertion
@@ -184,6 +151,7 @@ class KnowledgeBase:
             ))
             
             conn.commit()
+            logger.debug(f"✅ Offre stockée: {job_data.get('title', 'Sans titre')}")
             return True
             
         except Exception as e:
@@ -196,21 +164,14 @@ class KnowledgeBase:
                          limit: int = 20) -> List[Dict[str, Any]]:
         """Recherche hybride selon le moteur disponible"""
         
-        # Recherche avec moteur spécialisé si disponible
+        # Recherche avec moteur TF-IDF si disponible
         search_results = []
         
-        if self.search_engine:
+        if self.search_engine and self.embedding_method == "tfidf":
             try:
-                if EMBEDDING_METHOD == "ollama":
-                    search_results = await self.search_engine.search_similar_jobs(
-                        query, limit=limit*2
-                    )
-                elif EMBEDDING_METHOD == "tfidf":
-                    search_results = self.search_engine.search_jobs(
-                        query, limit=limit*2
-                    )
+                search_results = self.search_engine.search_jobs(query, limit=limit*2)
             except Exception as e:
-                logger.warning(f"Erreur recherche spécialisée: {e}")
+                logger.warning(f"Erreur recherche TF-IDF: {e}")
         
         # Recherche SQL de base en complément ou fallback
         sql_results = self.search_jobs_sql(query, filters, limit)
@@ -340,7 +301,7 @@ class KnowledgeBase:
                 }
             
             # Top technologies
-            cursor.execute('SELECT technologies FROM job_offers_main WHERE technologies IS NOT NULL')
+            cursor.execute('SELECT technologies FROM job_offers_main WHERE technologies IS NOT NULL AND technologies != "[]"')
             tech_data = cursor.fetchall()
             
             tech_count = {}
@@ -348,7 +309,8 @@ class KnowledgeBase:
                 try:
                     technologies = json.loads(row[0])
                     for tech in technologies:
-                        tech_count[tech] = tech_count.get(tech, 0) + 1
+                        if tech:  # Éviter les chaînes vides
+                            tech_count[tech] = tech_count.get(tech, 0) + 1
                 except:
                     continue
             
@@ -358,13 +320,13 @@ class KnowledgeBase:
             cursor.execute('''
                 SELECT experience_level, COUNT(*) 
                 FROM job_offers_main 
-                WHERE experience_level IS NOT NULL 
+                WHERE experience_level IS NOT NULL AND is_active = 1
                 GROUP BY experience_level
             ''')
             exp_levels = cursor.fetchall()
             
             # Pourcentage de remote
-            cursor.execute('SELECT COUNT(*) FROM job_offers_main WHERE remote = 1')
+            cursor.execute('SELECT COUNT(*) FROM job_offers_main WHERE remote = 1 AND is_active = 1')
             remote_count = cursor.fetchone()[0]
             remote_percentage = (remote_count / total_jobs * 100) if total_jobs > 0 else 0
             
@@ -372,7 +334,7 @@ class KnowledgeBase:
             cursor.execute('''
                 SELECT company, COUNT(*) as job_count
                 FROM job_offers_main 
-                WHERE company IS NOT NULL
+                WHERE company IS NOT NULL AND is_active = 1
                 GROUP BY company 
                 ORDER BY job_count DESC 
                 LIMIT 10
@@ -383,7 +345,7 @@ class KnowledgeBase:
             cursor.execute('''
                 SELECT COUNT(*) 
                 FROM job_offers_main 
-                WHERE scraped_at >= datetime('now', '-7 days')
+                WHERE scraped_at >= datetime('now', '-7 days') AND is_active = 1
             ''')
             recent_jobs = cursor.fetchone()[0]
             
@@ -401,7 +363,8 @@ class KnowledgeBase:
                     'tech_coverage': len([t for t in tech_count if tech_count[t] > 1]),
                     'company_diversity': len(top_companies),
                     'remote_data_available': remote_count > 0
-                }
+                },
+                'embedding_method': self.embedding_method
             }
             
         except Exception as e:
@@ -441,7 +404,7 @@ class KnowledgeBase:
                 if job[4]:  # technologies column
                     try:
                         techs = json.loads(job[4])
-                        all_techs.extend(techs)
+                        all_techs.extend([tech for tech in techs if tech])  # Éviter les chaînes vides
                     except:
                         continue
             
@@ -460,7 +423,7 @@ class KnowledgeBase:
             return {
                 'company': company_name,
                 'jobs_found': total_jobs,
-                'remote_percentage': round((remote_jobs / total_jobs) * 100, 1),
+                'remote_percentage': round((remote_jobs / total_jobs) * 100, 1) if total_jobs > 0 else 0,
                 'top_technologies': [{'tech': tech, 'count': count} for tech, count in top_techs],
                 'experience_levels': exp_levels,
                 'recent_activity': total_jobs > 0,
@@ -499,15 +462,18 @@ class KnowledgeBase:
             
             # Stats du moteur de recherche
             search_stats = {}
-            if self.search_engine:
-                search_stats = self.search_engine.get_stats()
+            if self.search_engine and hasattr(self.search_engine, 'get_stats'):
+                try:
+                    search_stats = self.search_engine.get_stats()
+                except Exception as e:
+                    logger.warning(f"Erreur récupération stats moteur: {e}")
             
             return {
                 'total_jobs': total_jobs,
                 'active_jobs': active_jobs,
                 'sources': sources,
                 'last_scrape': last_scrape,
-                'search_method': EMBEDDING_METHOD,
+                'search_method': self.embedding_method,
                 'search_engine_stats': search_stats,
                 'database_path': self.db_path
             }

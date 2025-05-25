@@ -1,4 +1,4 @@
-# models/ai_generator.py - Version complète sans Hugging Face
+# models/ai_generator.py - Version corrigée
 import requests
 import json
 from typing import Dict, List, Optional
@@ -15,10 +15,10 @@ try:
 except ImportError as e:
     RAG_AVAILABLE = False
     logger.warning(f"⚠️ RAG désactivé - Dépendances manquantes: {e}")
-    logger.info("💡 Pour activer le RAG: créez les fichiers knowledge_base.py et embeddings")
+    logger.info("💡 Pour activer le RAG: vérifiez les dépendances dans requirements.txt")
 
 class LinkedBoostAI:
-    """Générateur IA pour LinkedBoost sans dépendances Hugging Face"""
+    """Générateur IA pour LinkedBoost avec support RAG optionnel"""
     
     def __init__(self):
         self.base_url = Config.OLLAMA_BASE_URL
@@ -26,17 +26,20 @@ class LinkedBoostAI:
         self.timeout = 60
         
         # Initialisation conditionnelle du RAG
+        self.knowledge_base = None
+        self.rag_enabled = False
+        
         if RAG_AVAILABLE:
             try:
                 self.knowledge_base = KnowledgeBase()
                 self.rag_enabled = True
-                logger.info("🧠 Base de connaissances initialisée")
+                logger.info("🧠 Base de connaissances initialisée avec succès")
             except Exception as e:
                 self.rag_enabled = False
                 logger.warning(f"⚠️ Erreur initialisation RAG: {e}")
+                logger.info("💡 Fonctionnement en mode de base (sans enrichissement marché)")
         else:
-            self.knowledge_base = None
-            self.rag_enabled = False
+            logger.info("📝 Fonctionnement en mode de base (sans RAG)")
     
     def is_available(self) -> bool:
         """Vérifie si Ollama est disponible"""
@@ -82,10 +85,12 @@ class LinkedBoostAI:
                                                **kwargs) -> Dict[str, str]:
         """Génération de message LinkedIn avec enrichissement RAG optionnel"""
         
-        # Enrichissement avec RAG si disponible
+        # Variables par défaut
         enhanced_context = context
         company_insights = {}
+        enhancement_applied = False
         
+        # Enrichissement avec RAG si disponible
         if self.rag_enabled and recipient_company:
             try:
                 # Recherche d'insights sur l'entreprise
@@ -107,6 +112,7 @@ class LinkedBoostAI:
                     
                     if insights_text:
                         enhanced_context = f"{context}\n\nInsights marché: {' | '.join(insights_text)}"
+                        enhancement_applied = True
                         
             except Exception as e:
                 logger.warning(f"Erreur enrichissement RAG: {e}")
@@ -121,7 +127,7 @@ class LinkedBoostAI:
             'message': message,
             'rag_used': self.rag_enabled,
             'company_insights': company_insights,
-            'enhancement_applied': enhanced_context != context
+            'enhancement_applied': enhancement_applied
         }
     
     def generate_linkedin_message(self, message_type: str, recipient_name: str, 
@@ -211,16 +217,19 @@ GÉNÈRE LE MESSAGE:"""
                                            **kwargs) -> Dict[str, str]:
         """Génération de lettre de motivation enrichie avec insights marché"""
         
-        # Enrichissement avec insights marché si RAG disponible
+        # Variables par défaut
         market_context = ""
         company_insights = {}
+        market_insights = {}
         
+        # Enrichissement avec insights marché si RAG disponible
         if self.rag_enabled:
             try:
                 # Insights sur l'entreprise
                 company_insights = self.knowledge_base.get_company_insights(company_name)
                 
-                # Insights généraux sur le type de poste
+                # Insights généraux sur le marché
+                import asyncio
                 market_insights = await self.knowledge_base.get_market_insights()
                 
                 # Construction du contexte marché
@@ -259,6 +268,7 @@ GÉNÈRE LE MESSAGE:"""
             'cover_letter': cover_letter,
             'market_data_used': {
                 'company_insights': company_insights,
+                'market_insights': market_insights,
                 'market_context_added': bool(market_context),
                 'rag_enabled': self.rag_enabled
             }
@@ -402,39 +412,6 @@ CORPS: [votre email]"""
             "full_response": response
         }
     
-    async def analyze_linkedin_profile_enhanced(self, profile_text: str, 
-                                              target_role: str = "", **kwargs) -> Dict[str, any]:
-        """Analyse de profil enrichie avec comparaison marché"""
-        
-        # Analyse de profil de base
-        base_analysis = self.analyze_linkedin_profile(profile_text, target_role)
-        
-        # Enrichissement avec données marché si RAG disponible
-        market_comparison = {}
-        if self.rag_enabled and target_role:
-            try:
-                # Recherche d'offres similaires au rôle ciblé
-                similar_jobs = await self.knowledge_base.search_jobs(target_role, limit=20)
-                
-                if similar_jobs:
-                    market_comparison = self.compare_profile_to_market(
-                        profile_text, target_role, similar_jobs
-                    )
-                    
-            except Exception as e:
-                logger.warning(f"Erreur analyse marché profil: {e}")
-        
-        # Fusion des analyses
-        enhanced_analysis = {
-            **base_analysis,
-            'market_comparison': market_comparison,
-            'competitive_positioning': self.generate_competitive_positioning(
-                base_analysis, market_comparison
-            ) if market_comparison else {}
-        }
-        
-        return enhanced_analysis
-    
     def analyze_linkedin_profile(self, profile_text: str, target_role: str = "",
                                industry: str = "") -> Dict[str, any]:
         """Analyse un profil LinkedIn et fournit des recommandations"""
@@ -480,92 +457,6 @@ GÉNÈRE L'ANALYSE JSON:"""
                 "raw_response": response
             }
     
-    def compare_profile_to_market(self, profile_text: str, target_role: str, 
-                                market_jobs: List[Dict]) -> Dict[str, any]:
-        """Compare le profil aux exigences du marché"""
-        if not market_jobs:
-            return {}
-        
-        # Extraction basique des compétences du profil
-        profile_skills = self.extract_basic_skills(profile_text)
-        
-        # Analyse des exigences marché
-        market_techs = []
-        for job in market_jobs:
-            if job.get('technologies'):
-                market_techs.extend(job['technologies'])
-        
-        # Compétences les plus demandées
-        tech_demand = {}
-        for tech in market_techs:
-            tech_demand[tech] = tech_demand.get(tech, 0) + 1
-        
-        top_demanded = sorted(tech_demand.items(), key=lambda x: x[1], reverse=True)[:10]
-        
-        # Calcul du match basique
-        profile_tech_set = set([skill.lower() for skill in profile_skills])
-        market_tech_set = set([tech.lower() for tech, _ in top_demanded])
-        
-        if market_tech_set:
-            match_score = len(profile_tech_set.intersection(market_tech_set)) / len(market_tech_set) * 100
-        else:
-            match_score = 0
-        
-        missing_skills = market_tech_set - profile_tech_set
-        
-        return {
-            'match_percentage': round(match_score, 1),
-            'top_market_skills': [{'skill': tech, 'demand': count} for tech, count in top_demanded],
-            'profile_skills_found': list(profile_tech_set),
-            'missing_critical_skills': list(missing_skills)[:5],
-            'market_sample_size': len(market_jobs)
-        }
-    
-    def extract_basic_skills(self, text: str) -> List[str]:
-        """Extraction basique de compétences depuis le texte"""
-        # Liste de compétences communes à détecter
-        common_skills = [
-            'python', 'javascript', 'java', 'react', 'vue', 'angular', 'node.js',
-            'sql', 'postgresql', 'mysql', 'mongodb', 'redis', 'docker', 'kubernetes',
-            'aws', 'azure', 'gcp', 'git', 'jenkins', 'terraform', 'ansible',
-            'machine learning', 'data science', 'artificial intelligence', 'ai',
-            'leadership', 'management', 'communication', 'project management',
-            'agile', 'scrum', 'devops', 'ci/cd', 'testing', 'automation'
-        ]
-        
-        text_lower = text.lower()
-        found_skills = []
-        
-        for skill in common_skills:
-            if skill in text_lower:
-                found_skills.append(skill)
-        
-        return found_skills
-    
-    def generate_competitive_positioning(self, base_analysis: Dict, 
-                                       market_comparison: Dict) -> Dict[str, str]:
-        """Génère un positionnement concurrentiel"""
-        if not market_comparison:
-            return {}
-        
-        match_score = market_comparison.get('match_percentage', 0)
-        
-        if match_score >= 80:
-            positioning = "Profil très compétitif"
-            advice = "Vous êtes bien positionné(e) pour ce type de poste. Concentrez-vous sur votre différenciation."
-        elif match_score >= 60:
-            positioning = "Profil compétitif avec quelques axes d'amélioration"
-            advice = "Quelques compétences à acquérir pour optimiser votre profil."
-        else:
-            positioning = "Profil à renforcer"
-            advice = "Investissement formation recommandé sur les compétences clés du marché."
-        
-        return {
-            'positioning': positioning,
-            'advice': advice,
-            'priority_skills': market_comparison.get('missing_critical_skills', [])[:3]
-        }
-    
     def get_system_status(self) -> Dict[str, any]:
         """Retourne le statut complet du système"""
         status = {
@@ -588,7 +479,7 @@ GÉNÈRE L'ANALYSE JSON:"""
             }
         }
         
-        if self.rag_enabled:
+        if self.rag_enabled and self.knowledge_base:
             try:
                 kb_stats = self.knowledge_base.get_stats()
                 status['knowledge_base'] = kb_stats
@@ -596,12 +487,3 @@ GÉNÈRE L'ANALYSE JSON:"""
                 status['knowledge_base_error'] = str(e)
         
         return status
-    
-    def get_generation_methods(self) -> Dict[str, str]:
-        """Retourne les méthodes de génération disponibles"""
-        return {
-            'basic': 'Génération standard avec prompts optimisés',
-            'enhanced': 'Génération enrichie avec données marché (si RAG actif)',
-            'status': 'enhanced' if self.rag_enabled else 'basic',
-            'recommendation': 'Activez le RAG pour des générations enrichies avec contexte marché'
-        }

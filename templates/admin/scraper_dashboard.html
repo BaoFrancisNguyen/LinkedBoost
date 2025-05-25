@@ -1,4 +1,3 @@
-<!-- templates/admin/scraper_dashboard.html - Version complète avec logs temps réel -->
 {% extends "base.html" %}
 
 {% block title %}Administration Scraping - LinkedBoost{% endblock %}
@@ -17,6 +16,9 @@
                 <button class="btn btn-info ms-2" onclick="refreshStats()">
                     <i class="fas fa-sync me-2"></i>Actualiser
                 </button>
+                <div class="badge ms-2" id="websocketStatus">
+                    <i class="fas fa-circle me-1"></i>Connexion...
+                </div>
             </div>
         </div>
     </div>
@@ -82,31 +84,25 @@
                             </label>
                         </div>
                         <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="linkedin" disabled>
+                            <input class="form-check-input" type="checkbox" id="linkedin">
                             <label class="form-check-label" for="linkedin">
-                                LinkedIn (Bientôt disponible)
-                            </label>
-                        </div>
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="indeed" disabled>
-                            <label class="form-check-label" for="indeed">
-                                Indeed (Bientôt disponible)
+                                LinkedIn
                             </label>
                         </div>
                     </div>
 
                     <div class="mb-3">
                         <label for="maxJobs" class="form-label">Nombre max d'offres par scraping</label>
-                        <input type="number" class="form-control" id="maxJobs" value="100" min="10" max="500">
+                        <input type="number" class="form-control" id="maxJobs" value="25" min="5" max="100">
                     </div>
 
                     <div class="mb-3">
                         <label for="delay" class="form-label">Délai entre requêtes (secondes)</label>
-                        <input type="number" class="form-control" id="delay" value="2" min="1" max="10" step="0.5">
+                        <input type="number" class="form-control" id="delay" value="1" min="0.5" max="5" step="0.5">
                     </div>
 
                     <button type="button" class="btn btn-primary" onclick="saveConfig()">
-                        <i class="fas fa-save me-2"></i>Sauvegarder la configuration
+                        <i class="fas fa-save me-2"></i>Sauvegarder
                     </button>
                 </form>
             </div>
@@ -123,7 +119,14 @@
             </div>
             <div class="card-body">
                 <div id="scrapersStatus">
-                    <!-- Dynamiquement rempli -->
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span>Welcome to the Jungle</span>
+                        <span class="badge bg-success">Actif</span>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span>LinkedIn</span>
+                        <span class="badge bg-success">Actif</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -134,15 +137,15 @@
         <div class="card">
             <div class="card-header d-flex justify-content-between align-items-center">
                 <h5 class="mb-0">
-                    <i class="fas fa-list me-2"></i>Logs de Scraping
+                    <i class="fas fa-list me-2"></i>Logs de Scraping en Temps Réel
                 </h5>
                 <button class="btn btn-sm btn-outline-secondary" onclick="clearLogs()">
                     <i class="fas fa-trash me-1"></i>Effacer
                 </button>
             </div>
             <div class="card-body">
-                <div id="scrapingLogs" style="height: 300px; overflow-y: auto; background: #f8f9fa; padding: 1rem; border-radius: 0.375rem;">
-                    <p class="text-muted">Aucun log disponible</p>
+                <div id="scrapingLogs" style="height: 300px; overflow-y: auto; background: #f8f9fa; padding: 1rem; border-radius: 0.375rem; font-family: monospace; font-size: 0.9rem;">
+                    <div class="text-muted">WebSocket connecté - Prêt pour le scraping...</div>
                 </div>
             </div>
         </div>
@@ -161,25 +164,25 @@
                     <div class="col-md-6">
                         <h6>Top Technologies</h6>
                         <div id="topTechnologies">
-                            <!-- Dynamiquement rempli -->
+                            <div class="text-muted">Aucune donnée disponible</div>
                         </div>
                     </div>
                     <div class="col-md-6">
                         <h6>Distribution des Niveaux</h6>
                         <div id="experienceLevels">
-                            <!-- Dynamiquement rempli -->
+                            <div class="text-muted">Aucune donnée disponible</div>
                         </div>
                     </div>
                     <div class="col-md-6">
                         <h6>Top Entreprises</h6>
                         <div id="topCompanies">
-                            <!-- Dynamiquement rempli -->
+                            <div class="text-muted">Aucune donnée disponible</div>
                         </div>
                     </div>
                     <div class="col-md-6">
                         <h6>Répartition Remote</h6>
                         <div id="remoteStats">
-                            <!-- Dynamiquement rempli -->
+                            <div class="text-muted">Aucune donnée disponible</div>
                         </div>
                     </div>
                 </div>
@@ -188,7 +191,7 @@
     </div>
 </div>
 
-<!-- Modal de progression avec logs temps réel -->
+<!-- Modal de progression avec WebSocket -->
 <div class="modal fade" id="scrapingProgressModal" tabindex="-1" data-bs-backdrop="static">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
@@ -229,26 +232,10 @@
                     </div>
                 </div>
 
-                <!-- Détails de progression -->
-                <div class="mb-3" id="currentDetails" style="display: none;">
-                    <div class="alert alert-info">
-                        <div class="row">
-                            <div class="col-6">
-                                <strong>Source actuelle:</strong>
-                                <div id="currentSource">-</div>
-                            </div>
-                            <div class="col-6">
-                                <strong>Offre en cours:</strong>
-                                <div id="currentJob">-</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Logs en temps réel -->
                 <div class="mb-3">
                     <h6>Logs en temps réel</h6>
-                    <div id="realTimeLogs" style="height: 250px; overflow-y: auto; background: #f8f9fa; padding: 1rem; border-radius: 0.375rem; font-family: monospace; font-size: 0.9rem;">
+                    <div id="realTimeLogs" style="height: 200px; overflow-y: auto; background: #f8f9fa; padding: 1rem; border-radius: 0.375rem; font-family: monospace; font-size: 0.9rem;">
                         <div class="text-muted">En attente du démarrage...</div>
                     </div>
                 </div>
@@ -265,7 +252,7 @@
                     <i class="fas fa-check me-2"></i>Terminé
                 </button>
                 <button type="button" class="btn btn-primary" onclick="refreshStats()">
-                    <i class="fas fa-sync me-2"></i>Actualiser les stats
+                    <i class="fas fa-sync me-2"></i>Actualiser
                 </button>
             </div>
         </div>
@@ -278,31 +265,37 @@
     margin-bottom: 4px;
     padding: 2px 0;
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 8px;
+    line-height: 1.4;
 }
 
 .log-timestamp {
     color: #6c757d;
     font-size: 0.8em;
     min-width: 80px;
+    flex-shrink: 0;
 }
 
 .log-icon {
     min-width: 20px;
     text-align: center;
+    flex-shrink: 0;
 }
 
 .log-message {
     flex: 1;
+    word-wrap: break-word;
 }
 
 .log-success .log-message {
     color: #198754;
+    font-weight: 500;
 }
 
 .log-error .log-message {
     color: #dc3545;
+    font-weight: 500;
 }
 
 .log-warning .log-message {
@@ -317,11 +310,26 @@
     color: #6c757d;
     font-style: italic;
 }
+
+#websocketStatus.connected {
+    background-color: #198754;
+    color: white;
+}
+
+#websocketStatus.disconnected {
+    background-color: #dc3545;
+    color: white;
+}
+
+#websocketStatus.connecting {
+    background-color: #fd7e14;
+    color: white;
+}
 </style>
 {% endblock %}
 
 {% block scripts %}
-<!-- Socket.IO pour les logs temps réel (optionnel) -->
+<!-- Socket.IO CDN -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
 
 <script>
@@ -333,19 +341,29 @@ let scrapingStartTime = null;
 document.addEventListener('DOMContentLoaded', function() {
     loadStats();
     loadMarketAnalytics();
+    loadSavedConfig();
     initializeWebSocket();
 });
 
 function initializeWebSocket() {
-    /**
-     * Initialise la connexion WebSocket pour les logs temps réel
-     * Note: Nécessite l'implémentation côté serveur avec Flask-SocketIO
-     */
     try {
         scrapingSocket = io('/scraping');
         
         scrapingSocket.on('connect', function() {
-            console.log('🔌 WebSocket connecté pour scraping');
+            console.log('🔌 WebSocket connecté');
+            updateWebSocketStatus('connected');
+            addLog('🔌 WebSocket connecté - Scraping temps réel activé');
+        });
+        
+        scrapingSocket.on('disconnect', function() {
+            console.log('🔌 WebSocket déconnecté');
+            updateWebSocketStatus('disconnected');
+            addLog('🔌 WebSocket déconnecté - Reconnexion en cours...');
+        });
+        
+        scrapingSocket.on('connection_confirmed', function(data) {
+            console.log('✅ Connexion WebSocket confirmée');
+            updateWebSocketStatus('connected');
         });
         
         scrapingSocket.on('session_started', function(data) {
@@ -365,11 +383,45 @@ function initializeWebSocket() {
             onScrapingCompleted(data);
         });
         
-        scrapingSocket.on('disconnect', function() {
-            console.log('🔌 WebSocket déconnecté');
+        scrapingSocket.on('scraping_cancelled', function(data) {
+            addRealTimeLog({
+                timestamp: new Date().toLocaleTimeString(),
+                level: 'warning',
+                message: '🛑 Scraping annulé avec succès'
+            });
+            finalizeScraping();
         });
+        
+        scrapingSocket.on('scraping_error', function(data) {
+            addRealTimeLog({
+                timestamp: new Date().toLocaleTimeString(),
+                level: 'error',
+                message: `❌ Erreur: ${data.error}`
+            });
+            finalizeScraping();
+        });
+        
     } catch (error) {
-        console.log('⚠️ WebSocket non disponible, utilisation du mode standard');
+        console.error('Erreur WebSocket:', error);
+        updateWebSocketStatus('disconnected');
+        addLog('❌ Erreur WebSocket - Mode dégradé activé');
+    }
+}
+
+function updateWebSocketStatus(status) {
+    const statusEl = document.getElementById('websocketStatus');
+    statusEl.className = `badge ms-2 ${status}`;
+    
+    switch(status) {
+        case 'connected':
+            statusEl.innerHTML = '<i class="fas fa-circle me-1"></i>WebSocket Connecté';
+            break;
+        case 'disconnected':
+            statusEl.innerHTML = '<i class="fas fa-times-circle me-1"></i>WebSocket Déconnecté';
+            break;
+        case 'connecting':
+            statusEl.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>Connexion...';
+            break;
     }
 }
 
@@ -377,7 +429,6 @@ async function startScraping() {
     const sources = [];
     if (document.getElementById('wttj').checked) sources.push('wttj');
     if (document.getElementById('linkedin').checked) sources.push('linkedin');
-    if (document.getElementById('indeed').checked) sources.push('indeed');
     
     if (sources.length === 0) {
         alert('Veuillez sélectionner au moins une source');
@@ -385,7 +436,7 @@ async function startScraping() {
     }
     
     try {
-        // Initialiser la session WebSocket si disponible
+        // Démarrer une session WebSocket
         if (scrapingSocket && scrapingSocket.connected) {
             scrapingSocket.emit('start_scraping_session', {sources: sources});
         }
@@ -398,16 +449,12 @@ async function startScraping() {
         scrapingStartTime = Date.now();
         resetProgressDisplay();
         
+        addLog('🚀 Démarrage du scraping...');
         addRealTimeLog({
             timestamp: new Date().toLocaleTimeString(),
             level: 'info',
             message: '🚀 Démarrage du scraping...'
         });
-        
-        // Simulation de progression si pas de WebSocket
-        if (!scrapingSocket || !scrapingSocket.connected) {
-            simulateProgress();
-        }
         
         const response = await fetch('/api/scraping/start', {
             method: 'POST',
@@ -424,24 +471,17 @@ async function startScraping() {
         
         const result = await response.json();
         
-        scrapingInProgress = false;
-        
-        if (result.success) {
-            addRealTimeLog({
-                timestamp: new Date().toLocaleTimeString(),
-                level: 'success',
-                message: `✅ Scraping terminé : ${result.stats.total_jobs} offres collectées`
-            });
-            
-            finalizeScraping(result.stats);
-        } else {
+        if (!result.success) {
+            scrapingInProgress = false;
             addRealTimeLog({
                 timestamp: new Date().toLocaleTimeString(),
                 level: 'error',
-                message: `❌ Erreur scraping : ${result.error}`
+                message: `❌ Erreur démarrage: ${result.error}`
             });
             finalizeScraping();
         }
+        
+        // La suite sera gérée par les événements WebSocket
         
     } catch (error) {
         scrapingInProgress = false;
@@ -454,52 +494,7 @@ async function startScraping() {
     }
 }
 
-function simulateProgress() {
-    /**
-     * Simulation de progression si WebSocket indisponible
-     */
-    let progress = 0;
-    const interval = setInterval(() => {
-        if (!scrapingInProgress) {
-            clearInterval(interval);
-            return;
-        }
-        
-        progress += Math.random() * 10;
-        if (progress > 95) progress = 95;
-        
-        updateProgressDisplay({
-            phase: 'Collecte des offres...',
-            progress_percent: Math.round(progress),
-            completed_sources: progress > 50 ? 1 : 0,
-            total_sources: 1,
-            total_jobs: Math.round(progress * 2),
-            errors_count: 0,
-            duration: Math.round((Date.now() - scrapingStartTime) / 1000)
-        });
-        
-        // Logs simulés
-        if (Math.random() > 0.7) {
-            const messages = [
-                '🔍 Analyse de la page...',
-                '📄 Extraction des offres...',
-                '✨ Traitement des données...',
-                '💾 Sauvegarde en cours...'
-            ];
-            
-            addRealTimeLog({
-                timestamp: new Date().toLocaleTimeString(),
-                level: 'info',
-                message: messages[Math.floor(Math.random() * messages.length)]
-            });
-        }
-    }, 1000);
-}
-
 function updateProgressDisplay(data) {
-    /**
-     * Met à jour l'affichage de progression
-     */
     // Phase actuelle
     document.getElementById('currentPhase').textContent = data.phase || 'En cours...';
     
@@ -516,13 +511,11 @@ function updateProgressDisplay(data) {
         `${data.completed_sources || 0}/${data.total_sources || 1}`;
     document.getElementById('jobsProgress').textContent = data.total_jobs || 0;
     document.getElementById('errorsProgress').textContent = data.errors_count || 0;
-    document.getElementById('durationProgress').textContent = (data.duration || 0) + 's';
     
-    // Détails actuels
-    if (data.current_source || data.current_job) {
-        document.getElementById('currentDetails').style.display = 'block';
-        document.getElementById('currentSource').textContent = data.current_source || '-';
-        document.getElementById('currentJob').textContent = data.current_job || '-';
+    // Durée
+    if (scrapingStartTime) {
+        const duration = Math.round((Date.now() - scrapingStartTime) / 1000);
+        document.getElementById('durationProgress').textContent = duration + 's';
     }
     
     // Changement de couleur selon progression
@@ -536,9 +529,6 @@ function updateProgressDisplay(data) {
 }
 
 function addRealTimeLog(logData) {
-    /**
-     * Ajoute un log en temps réel
-     */
     const logsContainer = document.getElementById('realTimeLogs');
     
     // Icône selon le niveau
@@ -564,20 +554,20 @@ function addRealTimeLog(logData) {
     // Ajouter au container
     logsContainer.appendChild(logElement);
     
+    // Ajouter aussi aux logs principaux
+    addLog(logData.message);
+    
     // Scroll automatique vers le bas
     logsContainer.scrollTop = logsContainer.scrollHeight;
     
-    // Limiter le nombre de logs affichés (garder les 100 derniers)
+    // Limiter le nombre de logs affichés
     const logEntries = logsContainer.querySelectorAll('.log-entry');
-    if (logEntries.length > 100) {
+    if (logEntries.length > 50) {
         logEntries[0].remove();
     }
 }
 
 function resetProgressDisplay() {
-    /**
-     * Remet à zéro l'affichage de progression
-     */
     document.getElementById('currentPhase').textContent = 'Initialisation...';
     document.getElementById('progressBar').style.width = '0%';
     document.getElementById('progressText').textContent = '0%';
@@ -585,55 +575,51 @@ function resetProgressDisplay() {
     document.getElementById('jobsProgress').textContent = '0';
     document.getElementById('errorsProgress').textContent = '0';
     document.getElementById('durationProgress').textContent = '0s';
-    document.getElementById('currentDetails').style.display = 'none';
     document.getElementById('modalActions').style.display = 'block';
     document.getElementById('modalFooter').style.display = 'none';
     document.getElementById('closeModalBtn').style.display = 'none';
     document.getElementById('realTimeLogs').innerHTML = '<div class="text-muted">En attente du démarrage...</div>';
 }
 
-function finalizeScraping(stats = null) {
-    /**
-     * Finalise l'affichage après scraping
-     */
-    // Mettre à jour la progression à 100%
-    updateProgressDisplay({
-        phase: 'Terminé',
-        progress_percent: 100,
-        completed_sources: 1,
-        total_sources: 1,
-        total_jobs: stats?.total_jobs || 0,
-        errors_count: stats?.errors?.length || 0,
-        duration: Math.round((Date.now() - scrapingStartTime) / 1000)
-    });
+function finalizeScraping() {
+    scrapingInProgress = false;
     
     // Afficher boutons de fin
     document.getElementById('modalActions').style.display = 'none';
     document.getElementById('modalFooter').style.display = 'block';
     document.getElementById('closeModalBtn').style.display = 'block';
+}
+
+function onScrapingCompleted(data) {
+    addRealTimeLog({
+        timestamp: new Date().toLocaleTimeString(),
+        level: 'success',
+        message: `🎉 Scraping terminé avec succès : ${data.stats.total_jobs} offres collectées`
+    });
     
-    // Recharger les stats
+    updateProgressDisplay({
+        phase: 'Terminé avec succès',
+        progress_percent: 100,
+        total_jobs: data.stats.total_jobs,
+        errors_count: data.stats.errors?.length || 0
+    });
+    
+    finalizeScraping();
     loadStats();
     loadMarketAnalytics();
 }
 
 function stopScraping() {
-    /**
-     * Arrête le scraping en cours
-     */
     if (scrapingInProgress && currentScrapingSession) {
+        if (scrapingSocket && scrapingSocket.connected) {
+            scrapingSocket.emit('stop_scraping', {session_id: currentScrapingSession});
+        }
+        
         addRealTimeLog({
             timestamp: new Date().toLocaleTimeString(),
             level: 'warning',
             message: '⏹️ Arrêt du scraping demandé...'
         });
-        
-        // Envoyer signal d'arrêt via WebSocket si disponible
-        if (scrapingSocket && scrapingSocket.connected) {
-            scrapingSocket.emit('stop_scraping', {session_id: currentScrapingSession});
-        }
-        
-        scrapingInProgress = false;
         
         // Désactiver le bouton d'arrêt
         document.getElementById('stopBtn').disabled = true;
@@ -641,30 +627,15 @@ function stopScraping() {
     }
 }
 
-function onScrapingCompleted(data) {
-    /**
-     * Callback quand le scraping est terminé (via WebSocket)
-     */
-    addRealTimeLog({
-        timestamp: new Date().toLocaleTimeString(),
-        level: 'success',
-        message: `🎉 Scraping terminé avec succès`
-    });
-    
-    finalizeScraping(data.stats);
-}
-
-// Fonctions pour les statistiques et analytics
+// Fonctions utilitaires (identiques à avant)
 async function loadStats() {
     try {
         const response = await fetch('/api/status');
         const data = await response.json();
         
-        // Mise à jour des statistiques principales
         document.getElementById('totalJobs').textContent = 
             data.features?.total_jobs || '0';
         
-        // Format de la dernière date de scraping
         if (data.features?.last_scrape) {
             const date = new Date(data.features.last_scrape);
             document.getElementById('lastScrape').textContent = 
@@ -673,19 +644,13 @@ async function loadStats() {
             document.getElementById('lastScrape').textContent = 'Jamais';
         }
         
-        // Nombre d'embeddings
         document.getElementById('embeddingsCount').textContent = 
             data.features?.embedding_stats?.total_jobs || '0';
         
-        // Nombre d'erreurs (fictif pour l'instant)
         document.getElementById('errorCount').textContent = '0';
-        
-        // Mise à jour du statut des scrapers
-        updateScrapersStatus(data);
         
     } catch (error) {
         console.error('Erreur chargement stats:', error);
-        addLog('❌ Erreur lors du chargement des statistiques');
     }
 }
 
@@ -694,7 +659,7 @@ async function loadMarketAnalytics() {
         const response = await fetch('/api/analytics/market');
         const data = await response.json();
         
-        if (data.success) {
+        if (data.success && data.insights.total_jobs > 0) {
             displayMarketAnalytics(data.insights);
         }
         
@@ -704,7 +669,6 @@ async function loadMarketAnalytics() {
 }
 
 function displayMarketAnalytics(insights) {
-    // Top technologies
     const techDiv = document.getElementById('topTechnologies');
     if (insights.top_technologies && insights.top_technologies.length > 0) {
         techDiv.innerHTML = insights.top_technologies.slice(0, 5).map(tech => 
@@ -713,11 +677,8 @@ function displayMarketAnalytics(insights) {
                 <span class="badge bg-primary">${tech.count}</span>
             </div>`
         ).join('');
-    } else {
-        techDiv.innerHTML = '<div class="text-muted">Aucune donnée disponible</div>';
     }
     
-    // Distribution des niveaux d'expérience
     const expDiv = document.getElementById('experienceLevels');
     if (insights.experience_distribution && insights.experience_distribution.length > 0) {
         expDiv.innerHTML = insights.experience_distribution.map(exp => 
@@ -726,11 +687,8 @@ function displayMarketAnalytics(insights) {
                 <span class="badge bg-secondary">${exp.count}</span>
             </div>`
         ).join('');
-    } else {
-        expDiv.innerHTML = '<div class="text-muted">Aucune donnée disponible</div>';
     }
     
-    // Top entreprises
     const compDiv = document.getElementById('topCompanies');
     if (insights.top_hiring_companies && insights.top_hiring_companies.length > 0) {
         compDiv.innerHTML = insights.top_hiring_companies.slice(0, 5).map(comp => 
@@ -739,11 +697,8 @@ function displayMarketAnalytics(insights) {
                 <span class="badge bg-success">${comp.jobs}</span>
             </div>`
         ).join('');
-    } else {
-        compDiv.innerHTML = '<div class="text-muted">Aucune donnée disponible</div>';
     }
     
-    // Stats remote
     const remoteDiv = document.getElementById('remoteStats');
     if (insights.remote_percentage !== undefined) {
         remoteDiv.innerHTML = `
@@ -752,30 +707,7 @@ function displayMarketAnalytics(insights) {
             </div>
             <small>${insights.remote_percentage}% des offres proposent du remote</small>
         `;
-    } else {
-        remoteDiv.innerHTML = '<div class="text-muted">Aucune donnée disponible</div>';
     }
-}
-
-function updateScrapersStatus(data) {
-    const statusDiv = document.getElementById('scrapersStatus');
-    const scrapers = [
-        { name: 'Welcome to the Jungle', id: 'wttj', status: 'active' },
-        { name: 'LinkedIn', id: 'linkedin', status: 'development' },
-        { name: 'Indeed', id: 'indeed', status: 'development' }
-    ];
-    
-    statusDiv.innerHTML = scrapers.map(scraper => {
-        const statusClass = scraper.status === 'active' ? 'success' : 'warning';
-        const statusText = scraper.status === 'active' ? 'Actif' : 'En développement';
-        
-        return `
-            <div class="d-flex justify-content-between align-items-center mb-2">
-                <span>${scraper.name}</span>
-                <span class="badge bg-${statusClass}">${statusText}</span>
-            </div>
-        `;
-    }).join('');
 }
 
 function addLog(message) {
@@ -787,22 +719,25 @@ function addLog(message) {
     
     logsDiv.appendChild(logEntry);
     logsDiv.scrollTop = logsDiv.scrollHeight;
+    
+    const logs = logsDiv.children;
+    if (logs.length > 50) {
+        logsDiv.removeChild(logs[0]);
+    }
 }
 
 function clearLogs() {
-    document.getElementById('scrapingLogs').innerHTML = '<p class="text-muted">Logs effacés</p>';
+    document.getElementById('scrapingLogs').innerHTML = '<div class="text-muted">Logs effacés</div>';
     document.getElementById('realTimeLogs').innerHTML = '<div class="text-muted">Logs effacés</div>';
 }
 
 function saveConfig() {
     addLog('💾 Configuration sauvegardée');
     
-    // Sauvegarder la configuration dans localStorage
     const config = {
         sources: {
             wttj: document.getElementById('wttj').checked,
-            linkedin: document.getElementById('linkedin').checked,
-            indeed: document.getElementById('indeed').checked
+            linkedin: document.getElementById('linkedin').checked
         },
         maxJobs: document.getElementById('maxJobs').value,
         delay: document.getElementById('delay').value
@@ -810,7 +745,6 @@ function saveConfig() {
     
     localStorage.setItem('linkedboost_scraping_config', JSON.stringify(config));
     
-    // Feedback visuel
     const btn = event.target;
     const originalText = btn.innerHTML;
     btn.innerHTML = '<i class="fas fa-check me-2"></i>Sauvegardé!';
@@ -822,23 +756,27 @@ function saveConfig() {
     }, 2000);
 }
 
+function refreshStats() {
+    addLog('🔄 Actualisation des statistiques...');
+    loadStats();
+    loadMarketAnalytics();
+    
+    setTimeout(() => {
+        addLog('✅ Statistiques mises à jour');
+    }, 1000);
+}
+
 function loadSavedConfig() {
-    /**
-     * Charge la configuration sauvegardée
-     */
     try {
         const saved = localStorage.getItem('linkedboost_scraping_config');
         if (saved) {
             const config = JSON.parse(saved);
             
-            // Restaurer les checkboxes
             if (config.sources) {
-                document.getElementById('wttj').checked = config.sources.wttj;
-                document.getElementById('linkedin').checked = config.sources.linkedin;
-                document.getElementById('indeed').checked = config.sources.indeed;
+                document.getElementById('wttj').checked = config.sources.wttj !== false;
+                document.getElementById('linkedin').checked = config.sources.linkedin === true;
             }
             
-            // Restaurer les valeurs numériques
             if (config.maxJobs) {
                 document.getElementById('maxJobs').value = config.maxJobs;
             }
@@ -851,97 +789,14 @@ function loadSavedConfig() {
     }
 }
 
-function refreshStats() {
-    addLog('🔄 Actualisation des statistiques...');
-    loadStats();
-    loadMarketAnalytics();
-    
-    // Animation de l'icône de refresh
-    const btn = event.target.closest('button');
-    const icon = btn.querySelector('i');
-    icon.classList.add('fa-spin');
-    
-    setTimeout(() => {
-        icon.classList.remove('fa-spin');
-        addLog('✅ Statistiques mises à jour');
-    }, 1500);
-}
-
-function exportScrapingReport() {
-    /**
-     * Exporte un rapport de scraping
-     */
-    const report = {
-        timestamp: new Date().toISOString(),
-        stats: {
-            total_jobs: document.getElementById('totalJobs').textContent,
-            last_scrape: document.getElementById('lastScrape').textContent,
-            embeddings: document.getElementById('embeddingsCount').textContent,
-            errors: document.getElementById('errorCount').textContent
-        },
-        configuration: {
-            max_jobs: document.getElementById('maxJobs').value,
-            delay: document.getElementById('delay').value,
-            sources: {
-                wttj: document.getElementById('wttj').checked,
-                linkedin: document.getElementById('linkedin').checked,
-                indeed: document.getElementById('indeed').checked
-            }
-        }
-    };
-    
-    const blob = new Blob([JSON.stringify(report, null, 2)], {
-        type: 'application/json'
-    });
-    
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `linkedboost_scraping_report_${new Date().toISOString().split('T')[0]}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-    
-    addLog('📊 Rapport de scraping exporté');
-}
-
-// Gestion des raccourcis clavier
-document.addEventListener('keydown', function(event) {
-    // Ctrl/Cmd + R pour rafraîchir les stats
-    if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
-        event.preventDefault();
-        refreshStats();
-    }
-    
-    // Ctrl/Cmd + S pour sauvegarder la config
-    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
-        event.preventDefault();
-        saveConfig();
-    }
-    
-    // Échap pour fermer le modal de progression
-    if (event.key === 'Escape' && !scrapingInProgress) {
-        const modal = bootstrap.Modal.getInstance(document.getElementById('scrapingProgressModal'));
-        if (modal) {
-            modal.hide();
-        }
-    }
-});
-
-// Auto-refresh toutes les 30 secondes (seulement si pas de scraping en cours)
+// Auto-refresh des stats toutes les 30 secondes
 setInterval(() => {
     if (!scrapingInProgress) {
         loadStats();
     }
 }, 30000);
 
-// Charger la config sauvegardée au démarrage
-document.addEventListener('DOMContentLoaded', function() {
-    loadSavedConfig();
-});
-
-// Gestion de la fermeture de page pendant scraping
+// Protection fermeture de page
 window.addEventListener('beforeunload', function(event) {
     if (scrapingInProgress) {
         event.preventDefault();
@@ -950,49 +805,17 @@ window.addEventListener('beforeunload', function(event) {
     }
 });
 
-// Notification système si disponible
-function showSystemNotification(title, message) {
-    if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification(title, {
-            body: message,
-            icon: '/static/favicon.ico'
-        });
-    } else if ('Notification' in window && Notification.permission !== 'denied') {
-        Notification.requestPermission().then(function(permission) {
-            if (permission === 'granted') {
-                new Notification(title, {
-                    body: message,
-                    icon: '/static/favicon.ico'
-                });
-            }
-        });
-    }
-}
-
-// Ajouter bouton d'export dans le header
-function addExportButton() {
-    const headerDiv = document.querySelector('.d-flex.justify-content-between.align-items-center');
-    const buttonGroup = headerDiv.querySelector('div');
-    
-    const exportBtn = document.createElement('button');
-    exportBtn.className = 'btn btn-outline-primary ms-2';
-    exportBtn.innerHTML = '<i class="fas fa-download me-2"></i>Exporter';
-    exportBtn.onclick = exportScrapingReport;
-    
-    buttonGroup.appendChild(exportBtn);
-}
-
-// Initialisation supplémentaire au chargement
-document.addEventListener('DOMContentLoaded', function() {
-    addExportButton();
-    
-    // Demander permission pour les notifications
-    if ('Notification' in window && Notification.permission === 'default') {
-        Notification.requestPermission();
+// Gestion des raccourcis clavier
+document.addEventListener('keydown', function(event) {
+    if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
+        event.preventDefault();
+        refreshStats();
     }
     
-    console.log('✅ Dashboard de scraping initialisé');
+    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+        event.preventDefault();
+        saveConfig();
+    }
 });
-
 </script>
 {% endblock %}
