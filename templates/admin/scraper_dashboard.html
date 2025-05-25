@@ -1,4 +1,4 @@
-<!-- templates/admin/scraper_dashboard.html -->
+<!-- templates/admin/scraper_dashboard.html - Version complète avec logs temps réel -->
 {% extends "base.html" %}
 
 {% block title %}Administration Scraping - LinkedBoost{% endblock %}
@@ -188,35 +188,190 @@
     </div>
 </div>
 
-<!-- Modal de progression -->
+<!-- Modal de progression avec logs temps réel -->
 <div class="modal fade" id="scrapingProgressModal" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <i class="fas fa-spinner fa-spin me-2"></i>Scraping en cours
+                    <i class="fas fa-robot me-2"></i>Scraping en cours
                 </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" id="closeModalBtn" style="display: none;"></button>
             </div>
-            <div class="modal-body text-center">
-                <div class="progress mb-3">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                         role="progressbar" style="width: 0%"></div>
+            <div class="modal-body">
+                <!-- Progression globale -->
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span id="currentPhase">Initialisation...</span>
+                        <span id="progressText">0%</span>
+                    </div>
+                    <div class="progress mb-2">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             role="progressbar" style="width: 0%" id="progressBar"></div>
+                    </div>
+                    <div class="row text-center">
+                        <div class="col-3">
+                            <small class="text-muted">Sources</small>
+                            <div id="sourcesProgress">0/0</div>
+                        </div>
+                        <div class="col-3">
+                            <small class="text-muted">Offres</small>
+                            <div id="jobsProgress">0</div>
+                        </div>
+                        <div class="col-3">
+                            <small class="text-muted">Erreurs</small>
+                            <div id="errorsProgress">0</div>
+                        </div>
+                        <div class="col-3">
+                            <small class="text-muted">Durée</small>
+                            <div id="durationProgress">0s</div>
+                        </div>
+                    </div>
                 </div>
-                <p id="scrapingProgressText">Initialisation...</p>
+
+                <!-- Détails de progression -->
+                <div class="mb-3" id="currentDetails" style="display: none;">
+                    <div class="alert alert-info">
+                        <div class="row">
+                            <div class="col-6">
+                                <strong>Source actuelle:</strong>
+                                <div id="currentSource">-</div>
+                            </div>
+                            <div class="col-6">
+                                <strong>Offre en cours:</strong>
+                                <div id="currentJob">-</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Logs en temps réel -->
+                <div class="mb-3">
+                    <h6>Logs en temps réel</h6>
+                    <div id="realTimeLogs" style="height: 250px; overflow-y: auto; background: #f8f9fa; padding: 1rem; border-radius: 0.375rem; font-family: monospace; font-size: 0.9rem;">
+                        <div class="text-muted">En attente du démarrage...</div>
+                    </div>
+                </div>
+
+                <!-- Actions -->
+                <div class="text-center" id="modalActions">
+                    <button class="btn btn-secondary" onclick="stopScraping()" id="stopBtn">
+                        <i class="fas fa-stop me-2"></i>Arrêter
+                    </button>
+                </div>
+            </div>
+            <div class="modal-footer" id="modalFooter" style="display: none;">
+                <button type="button" class="btn btn-success" data-bs-dismiss="modal">
+                    <i class="fas fa-check me-2"></i>Terminé
+                </button>
+                <button type="button" class="btn btn-primary" onclick="refreshStats()">
+                    <i class="fas fa-sync me-2"></i>Actualiser les stats
+                </button>
             </div>
         </div>
     </div>
 </div>
+
+<!-- CSS pour les logs -->
+<style>
+.log-entry {
+    margin-bottom: 4px;
+    padding: 2px 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.log-timestamp {
+    color: #6c757d;
+    font-size: 0.8em;
+    min-width: 80px;
+}
+
+.log-icon {
+    min-width: 20px;
+    text-align: center;
+}
+
+.log-message {
+    flex: 1;
+}
+
+.log-success .log-message {
+    color: #198754;
+}
+
+.log-error .log-message {
+    color: #dc3545;
+}
+
+.log-warning .log-message {
+    color: #fd7e14;
+}
+
+.log-info .log-message {
+    color: #0d6efd;
+}
+
+.log-debug .log-message {
+    color: #6c757d;
+    font-style: italic;
+}
+</style>
 {% endblock %}
 
 {% block scripts %}
+<!-- Socket.IO pour les logs temps réel (optionnel) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+
 <script>
-let scrapingInterval = null;
+let scrapingSocket = null;
+let currentScrapingSession = null;
+let scrapingInProgress = false;
+let scrapingStartTime = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     loadStats();
     loadMarketAnalytics();
+    initializeWebSocket();
 });
+
+function initializeWebSocket() {
+    /**
+     * Initialise la connexion WebSocket pour les logs temps réel
+     * Note: Nécessite l'implémentation côté serveur avec Flask-SocketIO
+     */
+    try {
+        scrapingSocket = io('/scraping');
+        
+        scrapingSocket.on('connect', function() {
+            console.log('🔌 WebSocket connecté pour scraping');
+        });
+        
+        scrapingSocket.on('session_started', function(data) {
+            console.log('📡 Session de scraping démarrée:', data.session_id);
+            currentScrapingSession = data.session_id;
+        });
+        
+        scrapingSocket.on('scraping_progress', function(data) {
+            updateProgressDisplay(data);
+        });
+        
+        scrapingSocket.on('scraping_log', function(data) {
+            addRealTimeLog(data);
+        });
+        
+        scrapingSocket.on('scraping_completed', function(data) {
+            onScrapingCompleted(data);
+        });
+        
+        scrapingSocket.on('disconnect', function() {
+            console.log('🔌 WebSocket déconnecté');
+        });
+    } catch (error) {
+        console.log('⚠️ WebSocket non disponible, utilisation du mode standard');
+    }
+}
 
 async function startScraping() {
     const sources = [];
@@ -230,11 +385,29 @@ async function startScraping() {
     }
     
     try {
+        // Initialiser la session WebSocket si disponible
+        if (scrapingSocket && scrapingSocket.connected) {
+            scrapingSocket.emit('start_scraping_session', {sources: sources});
+        }
+        
         // Afficher modal de progression
         const modal = new bootstrap.Modal(document.getElementById('scrapingProgressModal'));
         modal.show();
         
-        addLog('🚀 Démarrage du scraping...');
+        scrapingInProgress = true;
+        scrapingStartTime = Date.now();
+        resetProgressDisplay();
+        
+        addRealTimeLog({
+            timestamp: new Date().toLocaleTimeString(),
+            level: 'info',
+            message: '🚀 Démarrage du scraping...'
+        });
+        
+        // Simulation de progression si pas de WebSocket
+        if (!scrapingSocket || !scrapingSocket.connected) {
+            simulateProgress();
+        }
         
         const response = await fetch('/api/scraping/start', {
             method: 'POST',
@@ -244,42 +417,275 @@ async function startScraping() {
             body: JSON.stringify({
                 sources: sources,
                 max_jobs: parseInt(document.getElementById('maxJobs').value),
-                delay: parseFloat(document.getElementById('delay').value)
+                delay: parseFloat(document.getElementById('delay').value),
+                session_id: currentScrapingSession
             })
         });
         
         const result = await response.json();
         
-        modal.hide();
+        scrapingInProgress = false;
         
         if (result.success) {
-            addLog(`✅ Scraping terminé : ${result.stats.total_jobs} offres collectées`);
-            loadStats();
-            loadMarketAnalytics();
+            addRealTimeLog({
+                timestamp: new Date().toLocaleTimeString(),
+                level: 'success',
+                message: `✅ Scraping terminé : ${result.stats.total_jobs} offres collectées`
+            });
+            
+            finalizeScraping(result.stats);
         } else {
-            addLog(`❌ Erreur scraping : ${result.error}`);
+            addRealTimeLog({
+                timestamp: new Date().toLocaleTimeString(),
+                level: 'error',
+                message: `❌ Erreur scraping : ${result.error}`
+            });
+            finalizeScraping();
         }
         
     } catch (error) {
-        document.querySelector('#scrapingProgressModal .modal-backdrop')?.remove();
-        addLog(`❌ Erreur : ${error.message}`);
+        scrapingInProgress = false;
+        addRealTimeLog({
+            timestamp: new Date().toLocaleTimeString(),
+            level: 'error',
+            message: `❌ Erreur : ${error.message}`
+        });
+        finalizeScraping();
     }
 }
 
+function simulateProgress() {
+    /**
+     * Simulation de progression si WebSocket indisponible
+     */
+    let progress = 0;
+    const interval = setInterval(() => {
+        if (!scrapingInProgress) {
+            clearInterval(interval);
+            return;
+        }
+        
+        progress += Math.random() * 10;
+        if (progress > 95) progress = 95;
+        
+        updateProgressDisplay({
+            phase: 'Collecte des offres...',
+            progress_percent: Math.round(progress),
+            completed_sources: progress > 50 ? 1 : 0,
+            total_sources: 1,
+            total_jobs: Math.round(progress * 2),
+            errors_count: 0,
+            duration: Math.round((Date.now() - scrapingStartTime) / 1000)
+        });
+        
+        // Logs simulés
+        if (Math.random() > 0.7) {
+            const messages = [
+                '🔍 Analyse de la page...',
+                '📄 Extraction des offres...',
+                '✨ Traitement des données...',
+                '💾 Sauvegarde en cours...'
+            ];
+            
+            addRealTimeLog({
+                timestamp: new Date().toLocaleTimeString(),
+                level: 'info',
+                message: messages[Math.floor(Math.random() * messages.length)]
+            });
+        }
+    }, 1000);
+}
+
+function updateProgressDisplay(data) {
+    /**
+     * Met à jour l'affichage de progression
+     */
+    // Phase actuelle
+    document.getElementById('currentPhase').textContent = data.phase || 'En cours...';
+    
+    // Barre de progression
+    const progressBar = document.getElementById('progressBar');
+    const progressText = document.getElementById('progressText');
+    const percent = Math.min(100, Math.max(0, data.progress_percent || 0));
+    
+    progressBar.style.width = percent + '%';
+    progressText.textContent = percent + '%';
+    
+    // Statistiques
+    document.getElementById('sourcesProgress').textContent = 
+        `${data.completed_sources || 0}/${data.total_sources || 1}`;
+    document.getElementById('jobsProgress').textContent = data.total_jobs || 0;
+    document.getElementById('errorsProgress').textContent = data.errors_count || 0;
+    document.getElementById('durationProgress').textContent = (data.duration || 0) + 's';
+    
+    // Détails actuels
+    if (data.current_source || data.current_job) {
+        document.getElementById('currentDetails').style.display = 'block';
+        document.getElementById('currentSource').textContent = data.current_source || '-';
+        document.getElementById('currentJob').textContent = data.current_job || '-';
+    }
+    
+    // Changement de couleur selon progression
+    if (percent >= 100) {
+        progressBar.className = 'progress-bar bg-success';
+    } else if ((data.errors_count || 0) > 0) {
+        progressBar.className = 'progress-bar bg-warning progress-bar-striped progress-bar-animated';
+    } else {
+        progressBar.className = 'progress-bar bg-primary progress-bar-striped progress-bar-animated';
+    }
+}
+
+function addRealTimeLog(logData) {
+    /**
+     * Ajoute un log en temps réel
+     */
+    const logsContainer = document.getElementById('realTimeLogs');
+    
+    // Icône selon le niveau
+    const icons = {
+        'info': '🔵',
+        'success': '✅',
+        'warning': '⚠️',
+        'error': '❌',
+        'debug': '🔍'
+    };
+    
+    const icon = icons[logData.level] || '📄';
+    
+    // Créer l'élément de log
+    const logElement = document.createElement('div');
+    logElement.className = `log-entry log-${logData.level}`;
+    logElement.innerHTML = `
+        <span class="log-timestamp">[${logData.timestamp}]</span>
+        <span class="log-icon">${icon}</span>
+        <span class="log-message">${logData.message}</span>
+    `;
+    
+    // Ajouter au container
+    logsContainer.appendChild(logElement);
+    
+    // Scroll automatique vers le bas
+    logsContainer.scrollTop = logsContainer.scrollHeight;
+    
+    // Limiter le nombre de logs affichés (garder les 100 derniers)
+    const logEntries = logsContainer.querySelectorAll('.log-entry');
+    if (logEntries.length > 100) {
+        logEntries[0].remove();
+    }
+}
+
+function resetProgressDisplay() {
+    /**
+     * Remet à zéro l'affichage de progression
+     */
+    document.getElementById('currentPhase').textContent = 'Initialisation...';
+    document.getElementById('progressBar').style.width = '0%';
+    document.getElementById('progressText').textContent = '0%';
+    document.getElementById('sourcesProgress').textContent = '0/0';
+    document.getElementById('jobsProgress').textContent = '0';
+    document.getElementById('errorsProgress').textContent = '0';
+    document.getElementById('durationProgress').textContent = '0s';
+    document.getElementById('currentDetails').style.display = 'none';
+    document.getElementById('modalActions').style.display = 'block';
+    document.getElementById('modalFooter').style.display = 'none';
+    document.getElementById('closeModalBtn').style.display = 'none';
+    document.getElementById('realTimeLogs').innerHTML = '<div class="text-muted">En attente du démarrage...</div>';
+}
+
+function finalizeScraping(stats = null) {
+    /**
+     * Finalise l'affichage après scraping
+     */
+    // Mettre à jour la progression à 100%
+    updateProgressDisplay({
+        phase: 'Terminé',
+        progress_percent: 100,
+        completed_sources: 1,
+        total_sources: 1,
+        total_jobs: stats?.total_jobs || 0,
+        errors_count: stats?.errors?.length || 0,
+        duration: Math.round((Date.now() - scrapingStartTime) / 1000)
+    });
+    
+    // Afficher boutons de fin
+    document.getElementById('modalActions').style.display = 'none';
+    document.getElementById('modalFooter').style.display = 'block';
+    document.getElementById('closeModalBtn').style.display = 'block';
+    
+    // Recharger les stats
+    loadStats();
+    loadMarketAnalytics();
+}
+
+function stopScraping() {
+    /**
+     * Arrête le scraping en cours
+     */
+    if (scrapingInProgress && currentScrapingSession) {
+        addRealTimeLog({
+            timestamp: new Date().toLocaleTimeString(),
+            level: 'warning',
+            message: '⏹️ Arrêt du scraping demandé...'
+        });
+        
+        // Envoyer signal d'arrêt via WebSocket si disponible
+        if (scrapingSocket && scrapingSocket.connected) {
+            scrapingSocket.emit('stop_scraping', {session_id: currentScrapingSession});
+        }
+        
+        scrapingInProgress = false;
+        
+        // Désactiver le bouton d'arrêt
+        document.getElementById('stopBtn').disabled = true;
+        document.getElementById('stopBtn').innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Annulation...';
+    }
+}
+
+function onScrapingCompleted(data) {
+    /**
+     * Callback quand le scraping est terminé (via WebSocket)
+     */
+    addRealTimeLog({
+        timestamp: new Date().toLocaleTimeString(),
+        level: 'success',
+        message: `🎉 Scraping terminé avec succès`
+    });
+    
+    finalizeScraping(data.stats);
+}
+
+// Fonctions pour les statistiques et analytics
 async function loadStats() {
     try {
         const response = await fetch('/api/status');
         const data = await response.json();
         
-        // Mise à jour des statistiques
+        // Mise à jour des statistiques principales
         document.getElementById('totalJobs').textContent = 
             data.features?.total_jobs || '0';
+        
+        // Format de la dernière date de scraping
+        if (data.features?.last_scrape) {
+            const date = new Date(data.features.last_scrape);
+            document.getElementById('lastScrape').textContent = 
+                date.toLocaleDateString('fr-FR');
+        } else {
+            document.getElementById('lastScrape').textContent = 'Jamais';
+        }
+        
+        // Nombre d'embeddings
+        document.getElementById('embeddingsCount').textContent = 
+            data.features?.embedding_stats?.total_jobs || '0';
+        
+        // Nombre d'erreurs (fictif pour l'instant)
+        document.getElementById('errorCount').textContent = '0';
         
         // Mise à jour du statut des scrapers
         updateScrapersStatus(data);
         
     } catch (error) {
         console.error('Erreur chargement stats:', error);
+        addLog('❌ Erreur lors du chargement des statistiques');
     }
 }
 
@@ -300,35 +706,41 @@ async function loadMarketAnalytics() {
 function displayMarketAnalytics(insights) {
     // Top technologies
     const techDiv = document.getElementById('topTechnologies');
-    if (insights.top_technologies) {
+    if (insights.top_technologies && insights.top_technologies.length > 0) {
         techDiv.innerHTML = insights.top_technologies.slice(0, 5).map(tech => 
             `<div class="d-flex justify-content-between mb-1">
                 <span>${tech.name}</span>
                 <span class="badge bg-primary">${tech.count}</span>
             </div>`
         ).join('');
+    } else {
+        techDiv.innerHTML = '<div class="text-muted">Aucune donnée disponible</div>';
     }
     
     // Distribution des niveaux d'expérience
     const expDiv = document.getElementById('experienceLevels');
-    if (insights.experience_distribution) {
+    if (insights.experience_distribution && insights.experience_distribution.length > 0) {
         expDiv.innerHTML = insights.experience_distribution.map(exp => 
             `<div class="d-flex justify-content-between mb-1">
                 <span>${exp.level}</span>
                 <span class="badge bg-secondary">${exp.count}</span>
             </div>`
         ).join('');
+    } else {
+        expDiv.innerHTML = '<div class="text-muted">Aucune donnée disponible</div>';
     }
     
     // Top entreprises
     const compDiv = document.getElementById('topCompanies');
-    if (insights.top_hiring_companies) {
+    if (insights.top_hiring_companies && insights.top_hiring_companies.length > 0) {
         compDiv.innerHTML = insights.top_hiring_companies.slice(0, 5).map(comp => 
             `<div class="d-flex justify-content-between mb-1">
                 <span>${comp.name}</span>
                 <span class="badge bg-success">${comp.jobs}</span>
             </div>`
         ).join('');
+    } else {
+        compDiv.innerHTML = '<div class="text-muted">Aucune donnée disponible</div>';
     }
     
     // Stats remote
@@ -340,6 +752,8 @@ function displayMarketAnalytics(insights) {
             </div>
             <small>${insights.remote_percentage}% des offres proposent du remote</small>
         `;
+    } else {
+        remoteDiv.innerHTML = '<div class="text-muted">Aucune donnée disponible</div>';
     }
 }
 
@@ -377,23 +791,208 @@ function addLog(message) {
 
 function clearLogs() {
     document.getElementById('scrapingLogs').innerHTML = '<p class="text-muted">Logs effacés</p>';
+    document.getElementById('realTimeLogs').innerHTML = '<div class="text-muted">Logs effacés</div>';
 }
 
 function saveConfig() {
     addLog('💾 Configuration sauvegardée');
-    // Ici, vous pourriez envoyer la config au serveur
+    
+    // Sauvegarder la configuration dans localStorage
+    const config = {
+        sources: {
+            wttj: document.getElementById('wttj').checked,
+            linkedin: document.getElementById('linkedin').checked,
+            indeed: document.getElementById('indeed').checked
+        },
+        maxJobs: document.getElementById('maxJobs').value,
+        delay: document.getElementById('delay').value
+    };
+    
+    localStorage.setItem('linkedboost_scraping_config', JSON.stringify(config));
+    
+    // Feedback visuel
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-check me-2"></i>Sauvegardé!';
+    btn.className = 'btn btn-success';
+    
+    setTimeout(() => {
+        btn.innerHTML = originalText;
+        btn.className = 'btn btn-primary';
+    }, 2000);
+}
+
+function loadSavedConfig() {
+    /**
+     * Charge la configuration sauvegardée
+     */
+    try {
+        const saved = localStorage.getItem('linkedboost_scraping_config');
+        if (saved) {
+            const config = JSON.parse(saved);
+            
+            // Restaurer les checkboxes
+            if (config.sources) {
+                document.getElementById('wttj').checked = config.sources.wttj;
+                document.getElementById('linkedin').checked = config.sources.linkedin;
+                document.getElementById('indeed').checked = config.sources.indeed;
+            }
+            
+            // Restaurer les valeurs numériques
+            if (config.maxJobs) {
+                document.getElementById('maxJobs').value = config.maxJobs;
+            }
+            if (config.delay) {
+                document.getElementById('delay').value = config.delay;
+            }
+        }
+    } catch (error) {
+        console.error('Erreur chargement configuration:', error);
+    }
 }
 
 function refreshStats() {
     addLog('🔄 Actualisation des statistiques...');
     loadStats();
     loadMarketAnalytics();
+    
+    // Animation de l'icône de refresh
+    const btn = event.target.closest('button');
+    const icon = btn.querySelector('i');
+    icon.classList.add('fa-spin');
+    
+    setTimeout(() => {
+        icon.classList.remove('fa-spin');
+        addLog('✅ Statistiques mises à jour');
+    }, 1500);
 }
 
-// Auto-refresh toutes les 30 secondes
+function exportScrapingReport() {
+    /**
+     * Exporte un rapport de scraping
+     */
+    const report = {
+        timestamp: new Date().toISOString(),
+        stats: {
+            total_jobs: document.getElementById('totalJobs').textContent,
+            last_scrape: document.getElementById('lastScrape').textContent,
+            embeddings: document.getElementById('embeddingsCount').textContent,
+            errors: document.getElementById('errorCount').textContent
+        },
+        configuration: {
+            max_jobs: document.getElementById('maxJobs').value,
+            delay: document.getElementById('delay').value,
+            sources: {
+                wttj: document.getElementById('wttj').checked,
+                linkedin: document.getElementById('linkedin').checked,
+                indeed: document.getElementById('indeed').checked
+            }
+        }
+    };
+    
+    const blob = new Blob([JSON.stringify(report, null, 2)], {
+        type: 'application/json'
+    });
+    
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `linkedboost_scraping_report_${new Date().toISOString().split('T')[0]}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    addLog('📊 Rapport de scraping exporté');
+}
+
+// Gestion des raccourcis clavier
+document.addEventListener('keydown', function(event) {
+    // Ctrl/Cmd + R pour rafraîchir les stats
+    if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
+        event.preventDefault();
+        refreshStats();
+    }
+    
+    // Ctrl/Cmd + S pour sauvegarder la config
+    if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+        event.preventDefault();
+        saveConfig();
+    }
+    
+    // Échap pour fermer le modal de progression
+    if (event.key === 'Escape' && !scrapingInProgress) {
+        const modal = bootstrap.Modal.getInstance(document.getElementById('scrapingProgressModal'));
+        if (modal) {
+            modal.hide();
+        }
+    }
+});
+
+// Auto-refresh toutes les 30 secondes (seulement si pas de scraping en cours)
 setInterval(() => {
-    loadStats();
+    if (!scrapingInProgress) {
+        loadStats();
+    }
 }, 30000);
+
+// Charger la config sauvegardée au démarrage
+document.addEventListener('DOMContentLoaded', function() {
+    loadSavedConfig();
+});
+
+// Gestion de la fermeture de page pendant scraping
+window.addEventListener('beforeunload', function(event) {
+    if (scrapingInProgress) {
+        event.preventDefault();
+        event.returnValue = 'Un scraping est en cours. Êtes-vous sûr de vouloir quitter ?';
+        return event.returnValue;
+    }
+});
+
+// Notification système si disponible
+function showSystemNotification(title, message) {
+    if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification(title, {
+            body: message,
+            icon: '/static/favicon.ico'
+        });
+    } else if ('Notification' in window && Notification.permission !== 'denied') {
+        Notification.requestPermission().then(function(permission) {
+            if (permission === 'granted') {
+                new Notification(title, {
+                    body: message,
+                    icon: '/static/favicon.ico'
+                });
+            }
+        });
+    }
+}
+
+// Ajouter bouton d'export dans le header
+function addExportButton() {
+    const headerDiv = document.querySelector('.d-flex.justify-content-between.align-items-center');
+    const buttonGroup = headerDiv.querySelector('div');
+    
+    const exportBtn = document.createElement('button');
+    exportBtn.className = 'btn btn-outline-primary ms-2';
+    exportBtn.innerHTML = '<i class="fas fa-download me-2"></i>Exporter';
+    exportBtn.onclick = exportScrapingReport;
+    
+    buttonGroup.appendChild(exportBtn);
+}
+
+// Initialisation supplémentaire au chargement
+document.addEventListener('DOMContentLoaded', function() {
+    addExportButton();
+    
+    // Demander permission pour les notifications
+    if ('Notification' in window && Notification.permission === 'default') {
+        Notification.requestPermission();
+    }
+    
+    console.log('✅ Dashboard de scraping initialisé');
+});
+
 </script>
 {% endblock %}
-
