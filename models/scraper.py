@@ -1,7 +1,8 @@
-# models/scraper.py - Version mise à jour avec support Selenium
+# models/scraper.py - Version avec système d'annulation
 import asyncio
 import time
 import logging
+import threading
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
 from config import Config
@@ -9,8 +10,35 @@ from config import Config
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+class ScrapingCancellationToken:
+    """Token d'annulation pour le scraping"""
+    
+    def __init__(self):
+        self._cancelled = False
+        self._lock = threading.Lock()
+    
+    def cancel(self):
+        """Annule le scraping"""
+        with self._lock:
+            self._cancelled = True
+            logger.info("🛑 Annulation du scraping demandée")
+    
+    def is_cancelled(self) -> bool:
+        """Vérifie si l'annulation a été demandée"""
+        with self._lock:
+            return self._cancelled
+    
+    def check_cancellation(self):
+        """Vérifie l'annulation et lève une exception si nécessaire"""
+        if self.is_cancelled():
+            raise ScrapingCancelledException("Scraping annulé par l'utilisateur")
+
+class ScrapingCancelledException(Exception):
+    """Exception levée quand le scraping est annulé"""
+    pass
+
 class ScrapingOrchestrator:
-    """Orchestrateur principal pour le scraping avec support Selenium"""
+    """Orchestrateur principal pour le scraping avec support d'annulation"""
     
     def __init__(self):
         self.scrapers = {}
@@ -22,6 +50,10 @@ class ScrapingOrchestrator:
             'sources': {},
             'selenium_available': False
         }
+        
+        # Système d'annulation
+        self.active_sessions = {}  # session_id -> cancellation_token
+        self.progress_tracker = None
         
         # Initialisation des scrapers disponibles
         self.initialize_scrapers()
@@ -60,178 +92,318 @@ class ScrapingOrchestrator:
         except Exception as e:
             logger.error(f"❌ Erreur initialisation scraper WTTJ: {e}")
         
-        # 2. Autres scrapers (à ajouter plus tard)
-        # self.initialize_linkedin_scraper()
-        # self.initialize_indeed_scraper()
-        
         # Résumé de l'initialisation
         if scrapers_initialized:
             logger.info(f"📡 Scrapers disponibles: {scrapers_initialized}")
         else:
             logger.warning("⚠️ Aucun scraper disponible!")
     
-    async def run_full_scrape(self, sources: List[str] = None) -> Dict[str, Any]:
-        """Lance un scraping complet de toutes les sources"""
+    def start_scraping_session(self, session_id: str) -> str:
+        """Démarre une nouvelle session de scraping"""
+        cancellation_token = ScrapingCancellationToken()
+        self.active_sessions[session_id] = cancellation_token
+        logger.info(f"📡 Session de scraping démarrée: {session_id}")
+        return session_id
+    
+    def cancel_scraping_session(self, session_id: str) -> bool:
+        """Annule une session de scraping"""
+        if session_id in self.active_sessions:
+            self.active_sessions[session_id].cancel()
+            logger.info(f"🛑 Annulation demandée pour session: {session_id}")
+            return True
+        return False
+    
+    def cleanup_session(self, session_id: str):
+        """Nettoie une session terminée"""
+        if session_id in self.active_sessions:
+            del self.active_sessions[session_id]
+            logger.info(f"🧹 Session nettoyée: {session_id}")
+    
+    async def run_full_scrape(self, sources: List[str] = None, session_id: str = None, 
+                             progress_tracker=None) -> Dict[str, Any]:
+        """Lance un scraping complet avec support d'annulation"""
         if sources is None:
             sources = list(self.scrapers.keys())
         
         if not sources:
             logger.warning("⚠️ Aucune source de scraping spécifiée")
-            return {'total_jobs': 0, 'error': 'Aucune source disponible'}
+            return {'total_jobs': 0, 'error': 'Aucune source disponible', 'cancelled': False}
+        
+        # Token d'annulation
+        cancellation_token = self.active_sessions.get(session_id) if session_id else None
+        self.progress_tracker = progress_tracker
+        
+        if self.progress_tracker:
+            self.progress_tracker.set_sources(sources)
         
         logger.info(f"🚀 Début du scraping pour : {sources}")
         start_time = datetime.now()
         all_jobs = []
+        cancelled = False
         
-        for source in sources:
-            if source not in self.scrapers:
-                logger.warning(f"❌ Scraper {source} non disponible")
-                self.scraping_stats['errors'].append({
-                    'source': source,
-                    'error': f'Scraper {source} non configuré',
-                    'timestamp': datetime.now().isoformat()
-                })
-                continue
+        try:
+            for source in sources:
+                # Vérifier l'annulation
+                if cancellation_token:
+                    cancellation_token.check_cancellation()
                 
-            try:
-                logger.info(f"📡 Scraping {source}...")
-                scraper = self.scrapers[source]
+                if source not in self.scrapers:
+                    logger.warning(f"❌ Scraper {source} non disponible")
+                    self.scraping_stats['errors'].append({
+                        'source': source,
+                        'error': f'Scraper {source} non configuré',
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    continue
+                    
+                try:
+                    if self.progress_tracker:
+                        self.progress_tracker.start_source(source)
+                    
+                    logger.info(f"📡 Scraping {source}...")
+                    scraper = self.scrapers[source]
+                    
+                    # Scraping avec gestion d'annulation
+                    jobs = await self.scrape_with_cancellation(
+                        scraper, Config.MAX_JOBS_PER_SCRAPE, cancellation_token
+                    )
+                    
+                    logger.info(f"✅ {len(jobs)} offres récupérées de {source}")
+                    all_jobs.extend(jobs)
+                    
+                    # Mise à jour des stats par source
+                    self.scraping_stats['sources'][source] = {
+                        'jobs_count': len(jobs),
+                        'last_scrape': datetime.now().isoformat(),
+                        'scraper_type': type(scraper).__name__
+                    }
+                    
+                    if self.progress_tracker:
+                        self.progress_tracker.complete_source(source, len(jobs))
+                    
+                    # Délai entre sources pour éviter la surcharge
+                    if len(sources) > 1:
+                        await self.sleep_with_cancellation(Config.REQUEST_DELAY * 2, cancellation_token)
+                    
+                except ScrapingCancelledException:
+                    logger.info(f"🛑 Scraping de {source} annulé")
+                    cancelled = True
+                    break
+                except Exception as e:
+                    error_msg = f"Erreur scraping {source}: {str(e)}"
+                    logger.error(error_msg)
+                    self.scraping_stats['errors'].append({
+                        'source': source,
+                        'error': error_msg,
+                        'timestamp': datetime.now().isoformat()
+                    })
+                    
+                    if self.progress_tracker:
+                        self.progress_tracker.add_error(error_msg, source)
+            
+            # Traitement et stockage des offres collectées (si pas annulé)
+            if not cancelled and all_jobs:
+                if self.progress_tracker:
+                    self.progress_tracker.start_processing()
                 
-                # Scraping avec gestion d'erreur spécifique
-                jobs = await scraper.scrape_jobs(limit=Config.MAX_JOBS_PER_SCRAPE)
+                logger.info(f"🔄 Traitement de {len(all_jobs)} offres collectées...")
+                processed_jobs = await self.process_jobs_with_cancellation(all_jobs, cancellation_token)
                 
-                logger.info(f"✅ {len(jobs)} offres récupérées de {source}")
-                all_jobs.extend(jobs)
+                if self.progress_tracker:
+                    self.progress_tracker.start_storage()
                 
-                # Mise à jour des stats par source
-                self.scraping_stats['sources'][source] = {
-                    'jobs_count': len(jobs),
-                    'last_scrape': datetime.now().isoformat(),
-                    'scraper_type': type(scraper).__name__
-                }
-                
-                # Délai entre sources pour éviter la surcharge
-                if len(sources) > 1:
-                    await asyncio.sleep(Config.REQUEST_DELAY * 2)
-                
-            except Exception as e:
-                error_msg = f"Erreur scraping {source}: {str(e)}"
-                logger.error(error_msg)
-                self.scraping_stats['errors'].append({
-                    'source': source,
-                    'error': error_msg,
-                    'timestamp': datetime.now().isoformat()
-                })
+                await self.store_jobs_with_cancellation(processed_jobs, cancellation_token)
+            else:
+                if cancelled:
+                    logger.info("⚠️ Traitement ignoré car scraping annulé")
+                else:
+                    logger.warning("⚠️ Aucune offre collectée")
         
-        # Traitement et stockage des offres collectées
-        if all_jobs:
-            logger.info(f"🔄 Traitement de {len(all_jobs)} offres collectées...")
-            processed_jobs = await self.process_jobs(all_jobs)
-            await self.store_jobs(processed_jobs)
-        else:
-            logger.warning("⚠️ Aucune offre collectée")
+        except ScrapingCancelledException:
+            logger.info("🛑 Scraping annulé par l'utilisateur")
+            cancelled = True
         
         # Mise à jour des statistiques finales
         self.scraping_stats.update({
             'total_jobs': len(all_jobs),
             'last_update': datetime.now().isoformat(),
             'duration_seconds': (datetime.now() - start_time).total_seconds(),
-            'success_rate': (len(all_jobs) / max(sum(len(self.scrapers) for _ in sources), 1)) * 100
+            'success_rate': (len(all_jobs) / max(sum(len(self.scrapers) for _ in sources), 1)) * 100,
+            'cancelled': cancelled
         })
         
-        logger.info(f"🎉 Scraping terminé : {len(all_jobs)} offres en {self.scraping_stats['duration_seconds']:.1f}s")
+        if cancelled:
+            logger.info(f"🛑 Scraping annulé : {len(all_jobs)} offres collectées avant annulation")
+        else:
+            logger.info(f"🎉 Scraping terminé : {len(all_jobs)} offres en {self.scraping_stats['duration_seconds']:.1f}s")
+            
+            if self.progress_tracker:
+                self.progress_tracker.complete()
+        
+        # Nettoyage de la session
+        if session_id:
+            self.cleanup_session(session_id)
+        
         return self.scraping_stats
     
-    async def process_jobs(self, jobs: List[Dict]) -> List[Dict]:
-        """Traite et enrichit les offres d'emploi"""
+    async def scrape_with_cancellation(self, scraper, limit: int, cancellation_token):
+        """Scrape avec vérification d'annulation"""
+        if hasattr(scraper, 'scrape_jobs_with_cancellation'):
+            # Le scraper supporte l'annulation nativement
+            return await scraper.scrape_jobs_with_cancellation(limit, cancellation_token)
+        else:
+            # Scraper standard - vérification périodique
+            jobs = []
+            batch_size = min(10, limit)  # Traiter par petits lots
+            
+            for start_idx in range(0, limit, batch_size):
+                if cancellation_token:
+                    cancellation_token.check_cancellation()
+                
+                batch_limit = min(batch_size, limit - start_idx)
+                batch_jobs = await scraper.scrape_jobs(batch_limit)
+                jobs.extend(batch_jobs)
+                
+                if len(batch_jobs) < batch_limit:
+                    # Plus d'offres disponibles
+                    break
+            
+            return jobs
+    
+    async def sleep_with_cancellation(self, duration: float, cancellation_token):
+        """Sleep avec vérification d'annulation"""
+        start_time = time.time()
+        check_interval = 0.5  # Vérifier toutes les 0.5 secondes
+        
+        while time.time() - start_time < duration:
+            if cancellation_token:
+                cancellation_token.check_cancellation()
+            
+            await asyncio.sleep(min(check_interval, duration - (time.time() - start_time)))
+    
+    async def process_jobs_with_cancellation(self, jobs: List[Dict], cancellation_token) -> List[Dict]:
+        """Traite les jobs avec vérification d'annulation"""
         logger.info(f"🔄 Traitement de {len(jobs)} offres...")
         
         processed = []
-        for i, job in enumerate(jobs):
-            try:
-                # Nettoyage et normalisation
-                clean_job = {
-                    'title': self.clean_text(job.get('title', '')),
-                    'company': self.clean_text(job.get('company', '')),
-                    'location': self.clean_text(job.get('location', '')),
-                    'description': self.clean_text(job.get('description', '')),
-                    'contract_type': job.get('contract_type', 'CDI'),
-                    'url': job.get('url', ''),
-                    'source': job.get('source', 'unknown'),
-                    'scraped_at': datetime.now().isoformat(),
-                    'hash_id': self.generate_job_hash(job)
-                }
+        batch_size = 10  # Traiter par lots pour permettre l'annulation
+        
+        for i in range(0, len(jobs), batch_size):
+            if cancellation_token:
+                cancellation_token.check_cancellation()
+            
+            batch = jobs[i:i + batch_size]
+            for job in batch:
+                try:
+                    # Traitement identique à la version originale
+                    clean_job = self.process_single_job(job)
+                    if clean_job['title'] and clean_job['company']:
+                        processed.append(clean_job)
+                        
+                        if self.progress_tracker:
+                            self.progress_tracker.update_job_progress(
+                                len(processed), len(jobs), clean_job['title']
+                            )
                 
-                # Enrichissement avec analyse de contenu
-                if clean_job['description']:
-                    clean_job.update({
-                        'requirements': self.extract_requirements(clean_job['description']),
-                        'salary': self.extract_salary(clean_job['description']),
-                        'remote': self.detect_remote(clean_job['description'] + ' ' + clean_job['title']),
-                        'experience_level': self.detect_experience_level(clean_job['title'] + ' ' + clean_job['description']),
-                        'technologies': self.extract_technologies(clean_job['description']),
-                        'benefits': self.extract_benefits(clean_job['description'])
-                    })
-                
-                # Validation des données essentielles
-                if clean_job['title'] and clean_job['company']:
-                    processed.append(clean_job)
-                    if i < 3:  # Log des premières offres pour debug
-                        logger.debug(f"✅ Offre traitée: {clean_job['title']} chez {clean_job['company']}")
-                else:
-                    logger.warning(f"⚠️ Offre ignorée (données manquantes): {job}")
-                
-            except Exception as e:
-                logger.error(f"❌ Erreur traitement offre: {e}")
-                continue
+                except Exception as e:
+                    logger.error(f"❌ Erreur traitement offre: {e}")
+                    continue
         
         logger.info(f"✅ {len(processed)} offres traitées avec succès")
         return processed
     
+    def process_single_job(self, job: Dict) -> Dict:
+        """Traite une seule offre (extrait de la méthode originale)"""
+        clean_job = {
+            'title': self.clean_text(job.get('title', '')),
+            'company': self.clean_text(job.get('company', '')),
+            'location': self.clean_text(job.get('location', '')),
+            'description': self.clean_text(job.get('description', '')),
+            'contract_type': job.get('contract_type', 'CDI'),
+            'url': job.get('url', ''),
+            'source': job.get('source', 'unknown'),
+            'scraped_at': datetime.now().isoformat(),
+            'hash_id': self.generate_job_hash(job)
+        }
+        
+        # Enrichissement avec analyse de contenu
+        if clean_job['description']:
+            clean_job.update({
+                'requirements': self.extract_requirements(clean_job['description']),
+                'salary': self.extract_salary(clean_job['description']),
+                'remote': self.detect_remote(clean_job['description'] + ' ' + clean_job['title']),
+                'experience_level': self.detect_experience_level(clean_job['title'] + ' ' + clean_job['description']),
+                'technologies': self.extract_technologies(clean_job['description']),
+                'benefits': self.extract_benefits(clean_job['description'])
+            })
+        
+        return clean_job
+    
+    async def store_jobs_with_cancellation(self, jobs: List[Dict], cancellation_token) -> None:
+        """Stocke les offres avec vérification d'annulation"""
+        logger.info(f"💾 Stockage de {len(jobs)} offres...")
+        
+        try:
+            from models.knowledge_base import KnowledgeBase
+            kb = KnowledgeBase()
+            
+            stored_count = 0
+            batch_size = 5  # Stocker par lots
+            
+            for i in range(0, len(jobs), batch_size):
+                if cancellation_token:
+                    cancellation_token.check_cancellation()
+                
+                batch = jobs[i:i + batch_size]
+                for job in batch:
+                    try:
+                        success = await kb.store_job(job)
+                        if success:
+                            stored_count += 1
+                    except Exception as e:
+                        logger.error(f"Erreur stockage offre {job.get('title', 'Unknown')}: {e}")
+            
+            logger.info(f"✅ Stockage terminé : {stored_count}/{len(jobs)} offres stockées")
+            
+        except ImportError:
+            logger.warning("⚠️ Base de connaissances non disponible, stockage ignoré")
+        except ScrapingCancelledException:
+            logger.info("🛑 Stockage annulé")
+        except Exception as e:
+            logger.error(f"❌ Erreur lors du stockage: {e}")
+    
+    # Méthodes utilitaires (identiques à la version originale)
     def clean_text(self, text: str) -> str:
-        """Nettoie et normalise le texte"""
         import re
         if not text:
             return ""
-        
-        # Suppression HTML et caractères spéciaux
         text = re.sub(r'<[^>]+>', '', text)
         text = re.sub(r'\s+', ' ', text)
         text = text.strip()
-        
-        return text[:5000]  # Limite de longueur
+        return text[:5000]
     
     def extract_requirements(self, description: str) -> List[str]:
-        """Extrait les compétences requises"""
         import re
-        
         requirements = []
         patterns = [
             r'(?:compétences?|skills?|requis|required|prerequisites)[:\-\s]+(.*?)(?:\n|\.|;|Profil|Formation)',
             r'(?:maîtrise|expérience|expertise)[:\-\s]+(.*?)(?:\n|\.|;)',
             r'(?:vous maîtrisez|tu maîtrises)[:\-\s]+(.*?)(?:\n|\.|;)',
         ]
-        
         for pattern in patterns:
             matches = re.findall(pattern, description, re.IGNORECASE | re.DOTALL)
             for match in matches:
-                # Découpage par virgules/points/tirets
                 skills = re.split(r'[,;\-•]+', match)
                 requirements.extend([skill.strip() for skill in skills if skill.strip() and len(skill.strip()) > 2])
-        
-        # Filtrage et dédoublonnage
         unique_requirements = []
         for req in requirements:
             req_clean = req.lower().strip()
             if req_clean not in [r.lower() for r in unique_requirements] and len(req) < 100:
                 unique_requirements.append(req.strip())
-        
-        return unique_requirements[:15]  # Max 15 compétences
+        return unique_requirements[:15]
     
     def extract_salary(self, description: str) -> Dict[str, Any]:
-        """Extrait les informations de salaire avec patterns avancés"""
         import re
-        
         salary_patterns = [
             r'(\d+)k?\s*[-–à]\s*(\d+)k?\s*€?\s*(?:brut|net)?',
             r'(\d+)\s*k€?\s*(?:brut|net)?(?:\s*(?:par|\/)\s*an)?',
@@ -240,7 +412,6 @@ class ScrapingOrchestrator:
             r'package[:\s]*(\d+)[-–](\d+)\s*k€?',
             r'(\d+)\s*000\s*[-–]\s*(\d+)\s*000\s*€'
         ]
-        
         for pattern in salary_patterns:
             match = re.search(pattern, description, re.IGNORECASE)
             if match:
@@ -248,7 +419,6 @@ class ScrapingOrchestrator:
                 if len(groups) >= 2:
                     min_sal = int(groups[0]) * (1000 if 'k' in match.group(0).lower() or len(groups[0]) <= 3 else 1)
                     max_sal = int(groups[1]) * (1000 if 'k' in match.group(0).lower() or len(groups[1]) <= 3 else 1)
-                    
                     return {
                         'found': True,
                         'text': match.group(0),
@@ -264,11 +434,9 @@ class ScrapingOrchestrator:
                         'amount': sal,
                         'currency': 'EUR'
                     }
-        
         return {'found': False, 'text': '', 'min': None, 'max': None}
     
     def detect_remote(self, text: str) -> bool:
-        """Détecte les modalités de travail à distance"""
         remote_keywords = [
             'remote', 'télétravail', 'home office', 'distanciel', 'hybride',
             '100% remote', 'full remote', 'partiellement remote', 'flex office'
@@ -277,33 +445,23 @@ class ScrapingOrchestrator:
         return any(keyword in text_lower for keyword in remote_keywords)
     
     def detect_experience_level(self, text: str) -> str:
-        """Détecte le niveau d'expérience avec patterns avancés"""
         text_lower = text.lower()
-        
-        # Patterns senior
         senior_patterns = [
             'senior', 'lead', 'principal', 'architect', 'expert', 'confirmé',
             r'[5-9]\+?\s*ans?', r'[1-9][0-9]\+?\s*ans?', 'expérimenté'
         ]
-        
-        # Patterns junior
         junior_patterns = [
             'junior', 'débutant', 'entry level', 'graduate', 'stage', 'alternance',
             r'0[-\s]?[12]?\s*ans?', 'first job', 'sortie d\'école'
         ]
-        
-        # Patterns mid-level
         mid_patterns = [
             r'[23456]\s*[-\s]\s*[456789]\s*ans?', 'intermédiaire', 'mid-level',
             r'[234]\+?\s*ans?'
         ]
-        
-        # Scoring par catégorie
         import re
         senior_score = sum(1 for pattern in senior_patterns if re.search(pattern, text_lower))
         junior_score = sum(1 for pattern in junior_patterns if re.search(pattern, text_lower))
         mid_score = sum(1 for pattern in mid_patterns if re.search(pattern, text_lower))
-        
         if senior_score > max(junior_score, mid_score):
             return 'senior'
         elif junior_score > mid_score:
@@ -312,50 +470,30 @@ class ScrapingOrchestrator:
             return 'mid'
     
     def extract_technologies(self, description: str) -> List[str]:
-        """Extrait les technologies avec reconnaissance avancée"""
-        # Base de technologies étendue
         tech_keywords = {
-            # Langages
             'python', 'javascript', 'typescript', 'java', 'go', 'rust', 'php', 'ruby',
             'c++', 'c#', 'scala', 'kotlin', 'swift', 'dart', 'r', 'matlab',
-            
-            # Frameworks Frontend
             'react', 'vue', 'vue.js', 'angular', 'svelte', 'next.js', 'nuxt.js',
             'jquery', 'bootstrap', 'tailwind', 'material-ui',
-            
-            # Frameworks Backend
             'django', 'flask', 'fastapi', 'spring', 'laravel', 'node.js', 'express',
             'nestjs', 'rails', 'symfony', 'asp.net',
-            
-            # Bases de données
             'postgresql', 'mysql', 'mongodb', 'redis', 'elasticsearch', 'sqlite',
             'oracle', 'cassandra', 'neo4j', 'dynamodb', 'firebase', 'supabase',
-            
-            # Cloud & DevOps
             'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'terraform', 'ansible',
             'jenkins', 'gitlab', 'github', 'circleci', 'vercel', 'netlify',
-            
-            # Data & ML
             'pandas', 'numpy', 'tensorflow', 'pytorch', 'scikit-learn', 'spark',
             'hadoop', 'kafka', 'airflow', 'dbt', 'looker', 'tableau', 'powerbi',
-            
-            # Outils
             'git', 'jira', 'confluence', 'slack', 'notion', 'figma', 'adobe'
         }
-        
         found_techs = []
         description_lower = description.lower()
-        
         for tech in tech_keywords:
-            # Recherche exacte avec délimiteurs de mots
             import re
             if re.search(r'\b' + re.escape(tech) + r'\b', description_lower):
                 found_techs.append(tech)
-        
         return found_techs
     
     def extract_benefits(self, description: str) -> List[str]:
-        """Extrait les avantages proposés"""
         benefits_keywords = [
             'télétravail', 'remote', 'horaires flexibles', 'flex time',
             'mutuelle', 'assurance santé', 'tickets restaurant', 'tr',
@@ -365,64 +503,31 @@ class ScrapingOrchestrator:
             'sport', 'salle de sport', 'vélo', 'transport',
             'afterwork', 'team building', 'séminaire'
         ]
-        
         found_benefits = []
         description_lower = description.lower()
-        
         for benefit in benefits_keywords:
             if benefit in description_lower:
                 found_benefits.append(benefit)
-        
         return found_benefits
     
     def generate_job_hash(self, job: Dict) -> str:
-        """Génère un hash unique pour l'offre"""
         import hashlib
-        
-        # Utiliser titre + entreprise + URL pour l'unicité
         unique_string = f"{job.get('title', '')}{job.get('company', '')}{job.get('url', '')}"
         return hashlib.md5(unique_string.encode()).hexdigest()
     
-    async def store_jobs(self, jobs: List[Dict]) -> None:
-        """Stocke les offres dans la base de connaissances"""
-        logger.info(f"💾 Stockage de {len(jobs)} offres...")
-        
-        try:
-            # Import conditionnel de la base de connaissances
-            from models.knowledge_base import KnowledgeBase
-            kb = KnowledgeBase()
-            
-            stored_count = 0
-            for job in jobs:
-                try:
-                    success = await kb.store_job(job)
-                    if success:
-                        stored_count += 1
-                except Exception as e:
-                    logger.error(f"Erreur stockage offre {job.get('title', 'Unknown')}: {e}")
-            
-            logger.info(f"✅ Stockage terminé : {stored_count}/{len(jobs)} offres stockées")
-            
-        except ImportError:
-            logger.warning("⚠️ Base de connaissances non disponible, stockage ignoré")
-        except Exception as e:
-            logger.error(f"❌ Erreur lors du stockage: {e}")
-    
     def get_stats(self) -> Dict[str, Any]:
-        """Retourne les statistiques complètes de scraping"""
         return {
             **self.scraping_stats,
             'available_scrapers': list(self.scrapers.keys()),
             'scraping_enabled': len(self.scrapers) > 0,
             'selenium_status': self.scraping_stats.get('selenium_available', False),
-            'last_scrape_time': self.last_scrape.isoformat() if self.last_scrape else None
+            'last_scrape_time': self.last_scrape.isoformat() if self.last_scrape else None,
+            'active_sessions': len(self.active_sessions)
         }
     
     def get_scraper_info(self, source: str) -> Dict[str, Any]:
-        """Retourne les informations sur un scraper spécifique"""
         if source not in self.scrapers:
             return {'available': False, 'error': 'Scraper non configuré'}
-        
         scraper = self.scrapers[source]
         return {
             'available': True,
@@ -431,7 +536,6 @@ class ScrapingOrchestrator:
             'selenium_based': 'Selenium' in type(scraper).__name__,
             'last_stats': self.scraping_stats.get('sources', {}).get(source, {})
         }
-
 
 # Scraper simple de fallback (pour compatibilité)
 class SimpleWTTJScraper:
@@ -540,4 +644,54 @@ Rémunération selon profil et expérience.
         """.strip()
 
 # Import time pour le fallback
-import time
+import time jobs
+    
+    async def scrape_jobs_with_cancellation(self, limit: int, cancellation_token) -> List[Dict[str, Any]]:
+        """Version avec support d'annulation"""
+        logger.info(f"🎭 Génération de {min(limit, 25)} offres simulées (annulable)...")
+        
+        companies = [
+            "Aircall", "BlaBlaCar", "Doctolib", "Criteo", "Deezer",
+            "Leboncoin", "Qonto", "Alan", "BackMarket", "Contentsquare",
+            "Mirakl", "Algolia", "Datadog", "Dashlane", "Evaneos"
+        ]
+        
+        titles = [
+            "Développeur Full Stack Senior", "Data Scientist", "Product Manager",
+            "Développeur Frontend React", "DevOps Engineer", "UX/UI Designer",
+            "Backend Developer Python", "Machine Learning Engineer", "Scrum Master",
+            "Lead Developer", "QA Engineer", "Business Analyst"
+        ]
+        
+        locations = [
+            "Paris", "Lyon", "Toulouse", "Nantes", "Bordeaux", 
+            "Lille", "Marseille", "Remote", "Paris (Hybrid)"
+        ]
+        
+        jobs = []
+        for i in range(min(limit, 25)):
+            # Vérifier l'annulation à chaque offre
+            if cancellation_token:
+                cancellation_token.check_cancellation()
+            
+            company = companies[i % len(companies)]
+            title = titles[i % len(titles)]
+            location = locations[i % len(locations)]
+            
+            job = {
+                'title': title,
+                'company': company,
+                'location': location,
+                'description': self.generate_realistic_description(title, company),
+                'url': f"https://www.welcometothejungle.com/fr/jobs/sim_{company.lower()}_{i}",
+                'source': 'wttj',
+                'contract_type': 'CDI',
+                'scraped_at': time.time()
+            }
+            jobs.append(job)
+            
+            # Petit délai pour simuler le scraping
+            await asyncio.sleep(0.1)
+        
+        logger.info(f"✅ {len(jobs)} offres simulées générées")
+        return
