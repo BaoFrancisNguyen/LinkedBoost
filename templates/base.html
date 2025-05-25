@@ -1,4 +1,4 @@
-<!-- templates/base.html -->
+<!-- templates/base.html - VERSION MISE À JOUR avec navigation admin -->
 <!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -47,6 +47,28 @@
                             <i class="fas fa-chart-line me-1"></i>Analyser Profil
                         </a>
                     </li>
+                    <!-- Navigation Administration -->
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            <i class="fas fa-cog me-1"></i>Administration
+                        </a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="/admin">
+                                <i class="fas fa-tachometer-alt me-2"></i>Dashboard Admin
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="/admin/scraper">
+                                <i class="fas fa-robot me-2"></i>Scraping & Collecte
+                            </a></li>
+                            <li><a class="dropdown-item" href="/admin/knowledge-base">
+                                <i class="fas fa-brain me-2"></i>Base de Connaissances
+                            </a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="/api/status" target="_blank">
+                                <i class="fas fa-heartbeat me-2"></i>API Status
+                            </a></li>
+                        </ul>
+                    </li>
                 </ul>
                 <div class="navbar-text">
                     <span class="badge bg-success" id="status-indicator">
@@ -78,6 +100,3 @@
     {% block scripts %}{% endblock %}
 </body>
 </html>
-
-
-

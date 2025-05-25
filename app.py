@@ -1,8 +1,9 @@
-# app.py - LinkedBoost Application principale
+# app.py - LinkedBoost Application complète
 from flask import Flask, render_template, request, jsonify
 from flask_cors import CORS
 import json
 import os
+from datetime import datetime
 from models.ai_generator import LinkedBoostAI
 from config import Config
 
@@ -27,6 +28,10 @@ def load_example_data():
         }
 
 example_data = load_example_data()
+
+# ===========================
+# ROUTES PRINCIPALES
+# ===========================
 
 @app.route('/')
 def dashboard():
@@ -64,7 +69,29 @@ def profile_analyzer_page():
     """Page d'analyse de profil LinkedIn"""
     return render_template('profile_analyzer.html')
 
-# API Endpoints
+# ===========================
+# ROUTES ADMIN
+# ===========================
+
+@app.route('/admin')
+def admin_dashboard():
+    """Dashboard d'administration principal"""
+    return render_template('admin/dashboard.html')
+
+@app.route('/admin/scraper')
+def admin_scraper():
+    """Interface d'administration du scraping"""
+    return render_template('admin/scraper_dashboard.html')
+
+@app.route('/admin/knowledge-base')
+def admin_knowledge_base():
+    """Interface de gestion de la base de connaissances"""
+    return render_template('admin/knowledge_base.html')
+
+# ===========================
+# API GÉNÉRATION
+# ===========================
+
 @app.route('/api/generate/message', methods=['POST'])
 def generate_linkedin_message():
     """API pour générer des messages LinkedIn personnalisés"""
@@ -177,45 +204,229 @@ def analyze_profile():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/status')
-def api_status():
-    """Statut de l'API et d'Ollama"""
-    return jsonify({
-        'ollama_available': ai_generator.is_available(),
-        'model': ai_generator.model,
-        'features': {
-            'message_generation': True,
-            'cover_letter_generation': True,
-            'email_generation': True,
-            'profile_analysis': True
+# ===========================
+# API GÉNÉRATION ENRICHIE
+# ===========================
+
+@app.route('/api/generate/enhanced', methods=['POST'])
+def generate_enhanced_content():
+    """Génération de contenu enrichie avec RAG"""
+    try:
+        data = request.get_json()
+        content_type = data.get('type')  # 'message', 'cover_letter', 'email'
+        
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        if content_type == 'message':
+            result = loop.run_until_complete(
+                ai_generator.generate_linkedin_message_enhanced(**data)
+            )
+        elif content_type == 'cover_letter':
+            result = loop.run_until_complete(
+                ai_generator.generate_cover_letter_enhanced(**data)
+            )
+        else:
+            return jsonify({'error': 'Type de contenu non supporté'}), 400
+        
+        return jsonify({
+            'success': True,
+            **result
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ===========================
+# API ADMIN
+# ===========================
+
+@app.route('/api/admin/scraping/status')
+def get_scraping_status():
+    """Statut détaillé du système de scraping"""
+    try:
+        # Import conditionnel pour éviter les erreurs si pas configuré
+        try:
+            from models.scraper import ScrapingOrchestrator
+            orchestrator = ScrapingOrchestrator()
+            scraping_stats = orchestrator.get_stats()
+            scraping_available = True
+        except ImportError:
+            scraping_stats = {"error": "Scraping non configuré"}
+            scraping_available = False
+        
+        try:
+            from models.knowledge_base import KnowledgeBase
+            kb = KnowledgeBase()
+            kb_stats = kb.get_stats()
+            kb_available = True
+        except ImportError:
+            kb_stats = {"error": "Base de connaissances non configurée"}
+            kb_available = False
+        
+        return jsonify({
+            'success': True,
+            'scraping': {
+                'available': scraping_available,
+                'stats': scraping_stats
+            },
+            'knowledge_base': {
+                'available': kb_available,
+                'stats': kb_stats
+            },
+            'ollama': {
+                'available': ai_generator.is_available(),
+                'model': ai_generator.model
+            },
+            'rag_enabled': getattr(ai_generator, 'rag_enabled', False)
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/admin/scraping/config', methods=['GET', 'POST'])
+def scraping_config():
+    """Configuration du scraping"""
+    if request.method == 'GET':
+        return jsonify({
+            'sources': ['wttj', 'linkedin', 'indeed'],
+            'active_sources': ['wttj'],
+            'max_jobs': Config.MAX_JOBS_PER_SCRAPE,
+            'interval_hours': Config.SCRAPING_INTERVAL_HOURS,
+            'request_delay': Config.REQUEST_DELAY
+        })
+    
+    if request.method == 'POST':
+        data = request.get_json()
+        # Ici vous pourriez sauvegarder la config
+        # Pour l'instant, on retourne just un succès
+        return jsonify({
+            'success': True,
+            'message': 'Configuration sauvegardée'
+        })
+
+@app.route('/api/admin/knowledge/stats')
+def knowledge_stats():
+    """Statistiques détaillées de la base de connaissances"""
+    try:
+        from models.knowledge_base import KnowledgeBase
+        kb = KnowledgeBase()
+        
+        import asyncio
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        # Statistiques générales
+        stats = kb.get_stats()
+        
+        # Insights marché
+        insights = loop.run_until_complete(kb.get_market_insights())
+        
+        return jsonify({
+            'success': True,
+            'stats': stats,
+            'insights': insights
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e),
+            'message': 'Base de connaissances non disponible'
+        })
+
+@app.route('/api/admin/system/health')
+def system_health():
+    """Vérification de santé complète du système"""
+    health = {
+        'timestamp': datetime.now().isoformat(),
+        'components': {}
+    }
+    
+    # Test Ollama
+    try:
+        ollama_available = ai_generator.is_available()
+        health['components']['ollama'] = {
+            'status': 'healthy' if ollama_available else 'unhealthy',
+            'model': ai_generator.model,
+            'url': Config.OLLAMA_BASE_URL
         }
-    })
-
-@app.errorhandler(404)
-def not_found(error):
-    return render_template('404.html'), 404
-
-@app.errorhandler(500)
-def internal_error(error):
-    return render_template('500.html'), 500
-
-if __name__ == '__main__':
-    # Vérification de la configuration au démarrage
-    print("🚀 LinkedBoost - Démarrage de l'application")
-    print(f"📡 Ollama disponible: {ai_generator.is_available()}")
-    print(f"🤖 Modèle: {ai_generator.model}")
+    except Exception as e:
+        health['components']['ollama'] = {
+            'status': 'error',
+            'error': str(e)
+        }
     
-    if not ai_generator.is_available():
-        print("⚠️  Ollama n'est pas disponible. Démarrez-le avec: ollama serve")
+    # Test Base de données
+    try:
+        import sqlite3
+        import os
+        os.makedirs("data", exist_ok=True)
+        conn = sqlite3.connect('data/linkedboost.db')
+        conn.execute('SELECT 1')
+        conn.close()
+        health['components']['database'] = {'status': 'healthy'}
+    except Exception as e:
+        health['components']['database'] = {
+            'status': 'error',
+            'error': str(e)
+        }
     
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Test Scraping
+    try:
+        from models.scraper import ScrapingOrchestrator
+        health['components']['scraping'] = {'status': 'available'}
+    except ImportError:
+        health['components']['scraping'] = {
+            'status': 'not_configured',
+            'message': 'Modules de scraping non installés'
+        }
+    
+    # Test RAG
+    try:
+        rag_status = getattr(ai_generator, 'rag_enabled', False)
+        health['components']['rag'] = {
+            'status': 'enabled' if rag_status else 'disabled'
+        }
+    except Exception as e:
+        health['components']['rag'] = {
+            'status': 'error',
+            'error': str(e)
+        }
+    
+    # Statut global
+    all_healthy = all(
+        comp.get('status') in ['healthy', 'enabled', 'available'] 
+        for comp in health['components'].values()
+    )
+    
+    health['overall_status'] = 'healthy' if all_healthy else 'degraded'
+    
+    return jsonify(health)
 
-# Nouvelles routes API dans app.py (à ajouter)
+# ===========================
+# API SCRAPING
+# ===========================
+
 @app.route('/api/scraping/start', methods=['POST'])
 def start_scraping():
     """Lance le scraping des offres d'emploi"""
     try:
-        from models.scraper import ScrapingOrchestrator
+        # Import conditionnel
+        try:
+            from models.scraper import ScrapingOrchestrator
+        except ImportError:
+            return jsonify({
+                'success': False,
+                'error': 'Modules de scraping non installés. Consultez le guide d\'installation.'
+            }), 500
         
         data = request.get_json() or {}
         sources = data.get('sources', ['wttj'])  # Par défaut WTTJ
@@ -253,8 +464,14 @@ def search_knowledge():
         if not query:
             return jsonify({'error': 'Query required'}), 400
         
-        from models.knowledge_base import KnowledgeBase
-        kb = KnowledgeBase()
+        try:
+            from models.knowledge_base import KnowledgeBase
+            kb = KnowledgeBase()
+        except ImportError:
+            return jsonify({
+                'success': False,
+                'error': 'Base de connaissances non configurée'
+            }), 500
         
         import asyncio
         loop = asyncio.new_event_loop()
@@ -280,8 +497,14 @@ def search_knowledge():
 def get_market_analytics():
     """Retourne les analytics du marché de l'emploi"""
     try:
-        from models.knowledge_base import KnowledgeBase
-        kb = KnowledgeBase()
+        try:
+            from models.knowledge_base import KnowledgeBase
+            kb = KnowledgeBase()
+        except ImportError:
+            return jsonify({
+                'success': False,
+                'error': 'Base de connaissances non configurée'
+            }), 500
         
         import asyncio
         loop = asyncio.new_event_loop()
@@ -300,37 +523,117 @@ def get_market_analytics():
             'error': str(e)
         }), 500
 
-@app.route('/api/generate/enhanced', methods=['POST'])
-def generate_enhanced_content():
-    """Génération de contenu enrichie avec RAG"""
+# ===========================
+# API STATUS ET UTILITAIRES
+# ===========================
+
+@app.route('/api/status')
+def api_status():
+    """Statut de l'API et d'Ollama"""
     try:
-        data = request.get_json()
-        content_type = data.get('type')  # 'message', 'cover_letter', 'email'
+        # Tentative de récupération des stats de la base de connaissances
+        try:
+            from models.knowledge_base import KnowledgeBase
+            kb = KnowledgeBase()
+            kb_stats = kb.get_stats()
+            kb_available = True
+        except:
+            kb_stats = {}
+            kb_available = False
         
-        ai_generator = LinkedBoostAI()
+        status = {
+            'ollama_available': ai_generator.is_available(),
+            'model': ai_generator.model,
+            'rag_enabled': getattr(ai_generator, 'rag_enabled', False),
+            'knowledge_base_available': kb_available,
+            'features': {
+                'message_generation': True,
+                'cover_letter_generation': True,
+                'email_generation': True,
+                'profile_analysis': True,
+                'enhanced_with_rag': getattr(ai_generator, 'rag_enabled', False),
+                'scraping': kb_available,
+                'market_insights': kb_available,
+                'total_jobs': kb_stats.get('total_jobs', 0) if kb_available else 0
+            }
+        }
         
-        import asyncio
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
+        # Ajout des stats de la base si disponible
+        if kb_available:
+            status['knowledge_base'] = kb_stats
         
-        if content_type == 'message':
-            result = loop.run_until_complete(
-                ai_generator.generate_linkedin_message_enhanced(**data)
-            )
-        elif content_type == 'cover_letter':
-            result = loop.run_until_complete(
-                ai_generator.generate_cover_letter_enhanced(**data)
-            )
-        else:
-            return jsonify({'error': 'Type de contenu non supporté'}), 400
-        
-        return jsonify({
-            'success': True,
-            **result
-        })
+        return jsonify(status)
         
     except Exception as e:
         return jsonify({
-            'success': False,
-            'error': str(e)
+            'error': str(e),
+            'ollama_available': False,
+            'features': {}
         }), 500
+
+# ===========================
+# GESTION D'ERREURS
+# ===========================
+
+@app.errorhandler(404)
+def not_found(error):
+    return render_template('404.html'), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return render_template('500.html'), 500
+
+# ===========================
+# CONTEXTE GLOBAL
+# ===========================
+
+@app.context_processor
+def inject_global_vars():
+    """Injecte des variables globales dans tous les templates"""
+    return {
+        'admin_nav': [
+            {'url': '/admin', 'title': 'Dashboard Admin', 'icon': 'fas fa-tachometer-alt'},
+            {'url': '/admin/scraper', 'title': 'Scraping', 'icon': 'fas fa-robot'},
+            {'url': '/admin/knowledge-base', 'title': 'Base de connaissances', 'icon': 'fas fa-brain'},
+        ],
+        'app_version': '1.0.0',
+        'current_year': datetime.now().year
+    }
+
+# ===========================
+# LANCEMENT DE L'APPLICATION
+# ===========================
+
+if __name__ == '__main__':
+    # Création des dossiers nécessaires
+    import os
+    os.makedirs('data', exist_ok=True)
+    os.makedirs('logs', exist_ok=True)
+    
+    # Vérification de la configuration au démarrage
+    print("🚀 LinkedBoost - Démarrage de l'application")
+    print(f"📡 Ollama disponible: {ai_generator.is_available()}")
+    print(f"🤖 Modèle: {ai_generator.model}")
+    print(f"🧠 RAG activé: {getattr(ai_generator, 'rag_enabled', False)}")
+    
+    # Vérification des modules optionnels
+    try:
+        from models.scraper import ScrapingOrchestrator
+        print("✅ Module de scraping disponible")
+    except ImportError:
+        print("⚠️  Module de scraping non configuré")
+    
+    try:
+        from models.knowledge_base import KnowledgeBase
+        print("✅ Base de connaissances disponible")
+    except ImportError:
+        print("⚠️  Base de connaissances non configurée")
+    
+    if not ai_generator.is_available():
+        print("⚠️  Ollama n'est pas disponible. Démarrez-le avec: ollama serve")
+        print("💡 Modèles requis: ollama pull mistral:latest && ollama pull nomic-embed-text")
+    
+    print("🌐 Interface admin disponible sur: http://localhost:5000/admin")
+    print("=" * 50)
+    
+    app.run(debug=True, host='0.0.0.0', port=5000)

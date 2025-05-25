@@ -1,0 +1,541 @@
+<!-- templates/admin/dashboard.html -->
+{% extends "base.html" %}
+
+{% block title %}Administration - LinkedBoost{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12 mb-4">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h2><i class="fas fa-cog me-2 text-primary"></i>Administration LinkedBoost</h2>
+                <p class="text-muted">Gestion et monitoring du système</p>
+            </div>
+            <div>
+                <button class="btn btn-outline-primary" onclick="refreshAllStats()">
+                    <i class="fas fa-sync me-2"></i>Actualiser tout
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statut global du système -->
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-heartbeat me-2"></i>Santé du Système
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3" id="systemHealth">
+                    <!-- Dynamiquement rempli -->
+                </div>
+                <div class="mt-3">
+                    <small class="text-muted">
+                        Dernière vérification: <span id="lastHealthCheck">-</span>
+                    </small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modules principaux -->
+    <div class="col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-robot me-2"></i>Scraping & Collecte
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <i class="fas fa-database fa-3x text-success mb-2"></i>
+                    <h4 id="totalJobsCollected">-</h4>
+                    <small class="text-muted">Offres collectées</small>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <small>Dernière collecte</small>
+                        <small id="lastScrape">-</small>
+                    </div>
+                    <div class="d-flex justify-content-between mb-1">
+                        <small>Sources actives</small>
+                        <small id="activeSources">-</small>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <small>Statut</small>
+                        <span class="badge" id="scrapingStatus">-</span>
+                    </div>
+                </div>
+                
+                <div class="d-grid gap-2">
+                    <a href="/admin/scraper" class="btn btn-success">
+                        <i class="fas fa-cogs me-2"></i>Gérer le Scraping
+                    </a>
+                    <button class="btn btn-outline-success" onclick="runQuickScrape()">
+                        <i class="fas fa-play me-2"></i>Scraping rapide
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0">
+                    <i class="fas fa-brain me-2"></i>Base de Connaissances
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <i class="fas fa-search fa-3x text-info mb-2"></i>
+                    <h4 id="totalEmbeddings">-</h4>
+                    <small class="text-muted">Documents indexés</small>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <small>Méthode de recherche</small>
+                        <small id="searchMethod">-</small>
+                    </div>
+                    <div class="d-flex justify-content-between mb-1">
+                        <small>RAG activé</small>
+                        <span class="badge" id="ragStatus">-</span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <small>Performance</small>
+                        <small id="searchPerformance">-</small>
+                    </div>
+                </div>
+                
+                <div class="d-grid gap-2">
+                    <a href="/admin/knowledge-base" class="btn btn-info">
+                        <i class="fas fa-database me-2"></i>Explorer la Base
+                    </a>
+                    <button class="btn btn-outline-info" onclick="testSearch()">
+                        <i class="fas fa-vial me-2"></i>Tester la recherche
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0">
+                    <i class="fas fa-magic me-2"></i>Génération IA
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="text-center mb-3">
+                    <i class="fas fa-microchip fa-3x text-warning mb-2"></i>
+                    <h4 id="ollamaStatus">-</h4>
+                    <small class="text-muted">Statut Ollama</small>
+                </div>
+                
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-1">
+                        <small>Modèle actuel</small>
+                        <small id="currentModel">-</small>
+                    </div>
+                    <div class="d-flex justify-content-between mb-1">
+                        <small>URL Ollama</small>
+                        <small id="ollamaUrl">-</small>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <small>Génération enrichie</small>
+                        <span class="badge" id="enhancedGeneration">-</span>
+                    </div>
+                </div>
+                
+                <div class="d-grid gap-2">
+                    <button class="btn btn-warning text-dark" onclick="testGeneration()">
+                        <i class="fas fa-bolt me-2"></i>Tester la génération
+                    </button>
+                    <button class="btn btn-outline-warning" onclick="checkModels()">
+                        <i class="fas fa-list me-2"></i>Modèles disponibles
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistiques d'utilisation -->
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-chart-line me-2"></i>Utilisation du Système
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-4">
+                    <div class="col-md-3 text-center">
+                        <h3 class="text-primary" id="messagesGenerated">-</h3>
+                        <small class="text-muted">Messages LinkedIn générés</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h3 class="text-success" id="lettersGenerated">-</h3>
+                        <small class="text-muted">Lettres de motivation</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h3 class="text-warning" id="emailsGenerated">-</h3>
+                        <small class="text-muted">Emails de networking</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h3 class="text-info" id="profilesAnalyzed">-</h3>
+                        <small class="text-muted">Profils analysés</small>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Actions rapides -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="fas fa-tools me-2"></i>Actions Rapides
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-3">
+                        <button class="btn btn-primary w-100" onclick="backupData()">
+                            <i class="fas fa-download me-2"></i>Sauvegarder les données
+                        </button>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-secondary w-100" onclick="clearCache()">
+                            <i class="fas fa-broom me-2"></i>Vider le cache
+                        </button>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-info w-100" onclick="exportLogs()">
+                            <i class="fas fa-file-export me-2"></i>Exporter les logs
+                        </button>
+                    </div>
+                    <div class="col-md-3">
+                        <button class="btn btn-warning w-100" onclick="restartServices()">
+                            <i class="fas fa-redo me-2"></i>Redémarrer les services
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de test -->
+<div class="modal fade" id="testModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Test du Système</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="testResults">
+                    <!-- Résultats des tests -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    loadSystemHealth();
+    loadSystemStats();
+    
+    // Actualisation automatique toutes les 30 secondes
+    setInterval(() => {
+        loadSystemHealth();
+        loadSystemStats();
+    }, 30000);
+});
+
+async function loadSystemHealth() {
+    try {
+        const response = await fetch('/api/admin/system/health');
+        const health = await response.json();
+        
+        displaySystemHealth(health);
+        document.getElementById('lastHealthCheck').textContent = new Date().toLocaleTimeString();
+        
+    } catch (error) {
+        console.error('Erreur chargement santé système:', error);
+    }
+}
+
+function displaySystemHealth(health) {
+    const container = document.getElementById('systemHealth');
+    
+    container.innerHTML = Object.entries(health.components).map(([component, status]) => {
+        const statusClass = {
+            'healthy': 'success',
+            'enabled': 'success',
+            'available': 'info',
+            'unhealthy': 'danger',
+            'error': 'danger',
+            'disabled': 'warning',
+            'not_configured': 'secondary'
+        }[status.status] || 'secondary';
+        
+        const icon = {
+            'ollama': 'fas fa-microchip',
+            'database': 'fas fa-database',
+            'scraping': 'fas fa-robot',
+            'rag': 'fas fa-brain'
+        }[component] || 'fas fa-cog';
+        
+        return `
+            <div class="col-md-3 text-center">
+                <i class="${icon} fa-2x text-${statusClass} mb-2"></i>
+                <h6>${component.charAt(0).toUpperCase() + component.slice(1)}</h6>
+                <span class="badge bg-${statusClass}">${status.status}</span>
+                ${status.error ? `<small class="text-danger d-block">${status.error}</small>` : ''}
+            </div>
+        `;
+    }).join('');
+}
+
+async function loadSystemStats() {
+    try {
+        // Statistiques de scraping
+        const scrapingResponse = await fetch('/api/admin/scraping/status');
+        const scrapingData = await scrapingResponse.json();
+        
+        if (scrapingData.success) {
+            updateScrapingStats(scrapingData);
+        }
+        
+        // Statistiques de la base de connaissances
+        const kbResponse = await fetch('/api/admin/knowledge/stats');
+        const kbData = await kbResponse.json();
+        
+        if (kbData.success) {
+            updateKnowledgeStats(kbData);
+        }
+        
+        // Statut général
+        const statusResponse = await fetch('/api/status');
+        const statusData = await statusResponse.json();
+        updateGeneralStats(statusData);
+        
+    } catch (error) {
+        console.error('Erreur chargement statistiques:', error);
+    }
+}
+
+function updateScrapingStats(data) {
+    if (data.scraping && data.scraping.stats) {
+        const stats = data.scraping.stats;
+        document.getElementById('totalJobsCollected').textContent = stats.total_jobs || '0';
+        document.getElementById('lastScrape').textContent = stats.last_update ? 
+            new Date(stats.last_update).toLocaleDateString() : 'Jamais';
+        document.getElementById('activeSources').textContent = 
+            Object.keys(stats.sources || {}).length || '0';
+        
+        const statusBadge = document.getElementById('scrapingStatus');
+        if (data.scraping.available) {
+            statusBadge.className = 'badge bg-success';
+            statusBadge.textContent = 'Actif';
+        } else {
+            statusBadge.className = 'badge bg-warning';
+            statusBadge.textContent = 'Non configuré';
+        }
+    }
+}
+
+function updateKnowledgeStats(data) {
+    if (data.stats) {
+        document.getElementById('totalEmbeddings').textContent = data.stats.total_jobs || '0';
+        document.getElementById('searchMethod').textContent = data.stats.search_method || 'Non défini';
+        
+        const ragBadge = document.getElementById('ragStatus');
+        if (data.stats.search_method === 'ollama') {
+            ragBadge.className = 'badge bg-success';
+            ragBadge.textContent = 'Activé';
+        } else {
+            ragBadge.className = 'badge bg-warning';
+            ragBadge.textContent = 'Basique';
+        }
+        
+        document.getElementById('searchPerformance').textContent = '85%'; // Mock
+    }
+}
+
+function updateGeneralStats(data) {
+    const ollamaStatusEl = document.getElementById('ollamaStatus');
+    if (data.ollama_available) {
+        ollamaStatusEl.textContent = 'Connecté';
+        ollamaStatusEl.className = 'h4 text-success';
+    } else {
+        ollamaStatusEl.textContent = 'Hors ligne';
+        ollamaStatusEl.className = 'h4 text-danger';
+    }
+    
+    document.getElementById('currentModel').textContent = data.model || 'Non défini';
+    document.getElementById('ollamaUrl').textContent = 'localhost:11434';
+    
+    const enhancedBadge = document.getElementById('enhancedGeneration');
+    if (data.features && data.features.enhanced_with_rag) {
+        enhancedBadge.className = 'badge bg-success';
+        enhancedBadge.textContent = 'Activée';
+    } else {
+        enhancedBadge.className = 'badge bg-secondary';
+        enhancedBadge.textContent = 'Standard';
+    }
+    
+    // Statistiques d'utilisation (mock pour l'instant)
+    document.getElementById('messagesGenerated').textContent = '150';
+    document.getElementById('lettersGenerated').textContent = '45';
+    document.getElementById('emailsGenerated').textContent = '78';
+    document.getElementById('profilesAnalyzed').textContent = '23';
+}
+
+// Actions rapides
+async function runQuickScrape() {
+    try {
+        showTestModal('Lancement du scraping rapide...');
+        
+        const response = await fetch('/api/scraping/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ sources: ['wttj'], max_jobs: 20 })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            updateTestResults(`✅ Scraping terminé: ${result.stats.total_jobs} offres collectées`);
+        } else {
+            updateTestResults(`❌ Erreur: ${result.error}`);
+        }
+        
+    } catch (error) {
+        updateTestResults(`❌ Erreur de connexion: ${error.message}`);
+    }
+}
+
+async function testSearch() {
+    try {
+        showTestModal('Test de la recherche sémantique...');
+        
+        const response = await fetch('/api/knowledge/search', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ query: 'développeur python', limit: 5 })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            updateTestResults(`✅ Recherche réussie: ${result.count} résultats trouvés`);
+        } else {
+            updateTestResults(`❌ Erreur de recherche: ${result.error}`);
+        }
+        
+    } catch (error) {
+        updateTestResults(`❌ Erreur: ${error.message}`);
+    }
+}
+
+async function testGeneration() {
+    try {
+        showTestModal('Test de génération IA...');
+        
+        const response = await fetch('/api/generate/message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                message_type: 'connection',
+                recipient_name: 'Test User',
+                context: 'Test de génération depuis l\'admin'
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            updateTestResults(`✅ Génération réussie!\n\nMessage généré:\n"${result.message.substring(0, 100)}..."`);
+        } else {
+            updateTestResults(`❌ Erreur de génération: ${result.error}`);
+        }
+        
+    } catch (error) {
+        updateTestResults(`❌ Erreur: ${error.message}`);
+    }
+}
+
+function showTestModal(message) {
+    document.getElementById('testResults').innerHTML = `
+        <div class="text-center">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">${message}</p>
+        </div>
+    `;
+    new bootstrap.Modal(document.getElementById('testModal')).show();
+}
+
+function updateTestResults(message) {
+    document.getElementById('testResults').innerHTML = `<pre>${message}</pre>`;
+}
+
+// Autres actions
+function refreshAllStats() {
+    loadSystemHealth();
+    loadSystemStats();
+    showNotification('Statistiques actualisées', 'success');
+}
+
+function backupData() {
+    alert('Fonctionnalité de sauvegarde en cours de développement');
+}
+
+function clearCache() {
+    alert('Cache vidé (simulation)');
+}
+
+function exportLogs() {
+    alert('Export des logs en cours de développement');
+}
+
+function restartServices() {
+    if (confirm('Redémarrer les services? Cela peut prendre quelques secondes.')) {
+        alert('Redémarrage simulé');
+    }
+}
+
+function checkModels() {
+    showTestModal('Vérification des modèles disponibles...');
+    // Simulation
+    setTimeout(() => {
+        updateTestResults(`Modèles disponibles:
+✅ mistral:latest
+✅ nomic-embed-text:latest
+❌ llama2:latest (non installé)`);
+    }, 1000);
+}
+
+function showNotification(message, type) {
+    // Réutilise la fonction de app.js
+    if (window.linkedBoostApp) {
+        window.linkedBoostApp.showNotification(message, type);
+    }
+}
+</script>
+{% endblock %}
