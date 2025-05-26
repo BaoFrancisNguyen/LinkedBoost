@@ -51,7 +51,7 @@
 ### Installation Automatique
 ```bash
 # 1. Cloner le projet
-git clone https://github.com/votre-repo/linkedboost.git
+git clone https://github.com/BaoFrancisNguyen/LinkedBoost
 cd linkedboost
 
 # 2. Configuration automatique
