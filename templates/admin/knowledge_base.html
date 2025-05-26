@@ -1,4 +1,4 @@
-<!-- templates/admin/knowledge_base.html -->
+<!-- templates/admin/knowledge_base.html - Version corrigée -->
 {% extends "base.html" %}
 
 {% block title %}Base de Connaissances - LinkedBoost{% endblock %}
@@ -110,7 +110,7 @@
                     <div class="col-6">
                         <div class="border-end">
                             <h4 class="text-primary" id="totalEmbeddings">-</h4>
-                            <small class="text-muted">Embeddings générés</small>
+                            <small class="text-muted">Offres indexées</small>
                         </div>
                     </div>
                     <div class="col-6">
@@ -122,7 +122,7 @@
                 <hr>
                 
                 <div class="mb-3">
-                    <label class="form-label">Performance du modèle</label>
+                    <label class="form-label">Performance du système</label>
                     <div class="progress">
                         <div class="progress-bar bg-info" style="width: 85%"></div>
                     </div>
@@ -286,7 +286,6 @@ function displaySearchResults(results) {
 }
 
 function exportResults() {
-    // Logique d'export des résultats
     alert('Export en cours de développement');
 }
 
@@ -324,9 +323,9 @@ async function loadKnowledgeBaseStats() {
         const data = await response.json();
         
         // Mise à jour des statistiques
-        if (data.features && data.features.embedding_stats) {
+        if (data.knowledge_base && data.knowledge_base.stats) {
             document.getElementById('totalEmbeddings').textContent = 
-                data.features.embedding_stats.total_jobs || '0';
+                data.knowledge_base.stats.total_jobs || '0';
         }
         
         document.getElementById('searchAccuracy').textContent = '87%';
@@ -337,4 +336,4 @@ async function loadKnowledgeBaseStats() {
     }
 }
 </script>
-{% endblock %>
+{% endblock %}

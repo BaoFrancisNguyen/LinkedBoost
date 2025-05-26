@@ -1,4 +1,5 @@
-# models/knowledge_base.py - Version simplifiée
+# models/knowledge_base.py - Correction import EmbeddingManager
+
 import sqlite3
 import json
 from typing import List, Dict, Any, Optional
@@ -9,28 +10,26 @@ from config import Config
 logger = logging.getLogger(__name__)
 
 class KnowledgeBase:
-    """Base de connaissances simplifiée pour LinkedBoost"""
+    """Base de connaissances - Version avec import corrigé"""
     
     def __init__(self):
         self.db_path = "data/knowledge_base.db"
-        self.search_engine = None
-        self.embedding_method = "sql"  # Mode par défaut
+        self.embedding_manager = None
         
-        # Initialisation conditionnelle du moteur de recherche avancé
-        self._init_search_engine()
-        self.create_tables()
-    
-    def _init_search_engine(self):
-        """Initialise le moteur de recherche si disponible"""
+        # Initialisation conditionnelle des embeddings - CORRECTION
         try:
-            from models.simple_search import SimpleSearchEngine
-            self.search_engine = SimpleSearchEngine()
-            self.embedding_method = "tfidf"
-            logger.info("🔍 Moteur de recherche TF-IDF initialisé")
+            from models.embeddings import EmbeddingManager  # Import local
+            self.embedding_manager = EmbeddingManager()
+            self.embeddings_enabled = self.embedding_manager.method != "none"
+            logger.info(f"🧠 Base de connaissances initialisée (embeddings: {self.embeddings_enabled})")
         except ImportError as e:
-            logger.info("📝 Utilisation de la recherche SQL de base")
-            self.search_engine = None
-            self.embedding_method = "sql"
+            self.embeddings_enabled = False
+            logger.warning(f"⚠️ EmbeddingManager non disponible: {e}")
+        except Exception as e:
+            self.embeddings_enabled = False
+            logger.warning(f"⚠️ Base de connaissances sans embeddings: {e}")
+        
+        self.create_tables()
     
     def create_tables(self):
         """Crée les tables de base de données principales"""
@@ -66,22 +65,6 @@ class KnowledgeBase:
                 )
             ''')
             
-            # Index pour améliorer les performances
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_company 
-                ON job_offers_main(company)
-            ''')
-            
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_scraped_at 
-                ON job_offers_main(scraped_at)
-            ''')
-            
-            cursor.execute('''
-                CREATE INDEX IF NOT EXISTS idx_active 
-                ON job_offers_main(is_active)
-            ''')
-            
             conn.commit()
             conn.close()
             logger.info("✅ Tables de base de données créées")
@@ -91,36 +74,19 @@ class KnowledgeBase:
             raise
     
     async def store_job(self, job_data: Dict[str, Any]) -> bool:
-        """Stocke une offre d'emploi complète"""
+        """Stocke une offre d'emploi"""
         try:
-            # Stockage dans la base principale
-            success = self.store_job_main(job_data)
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
             
-            # Stockage dans le moteur de recherche si disponible
-            if success and self.search_engine and self.embedding_method == "tfidf":
-                try:
-                    self.search_engine.store_job(job_data)
-                except Exception as e:
-                    logger.warning(f"Erreur indexation TF-IDF: {e}")
-            
-            return success
-            
-        except Exception as e:
-            logger.error(f"Erreur stockage offre: {e}")
-            return False
-    
-    def store_job_main(self, job_data: Dict[str, Any]) -> bool:
-        """Stockage dans la table principale"""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        
-        try:
             # Vérification unicité
-            hash_id = job_data.get('hash_id', self.generate_hash(job_data))
+            hash_id = job_data.get('hash_id')
+            if not hash_id:
+                hash_id = self.generate_hash(job_data)
             
             cursor.execute('SELECT 1 FROM job_offers_main WHERE hash_id = ?', (hash_id,))
             if cursor.fetchone():
-                logger.debug(f"Offre déjà existante: {job_data.get('title', 'Sans titre')}")
+                conn.close()
                 return False  # Déjà existant
             
             # Insertion
@@ -140,9 +106,9 @@ class KnowledgeBase:
                 job_data.get('description', ''),
                 json.dumps(job_data.get('requirements', [])),
                 json.dumps(job_data.get('technologies', [])),
-                salary_info.get('min'),
-                salary_info.get('max'),
-                salary_info.get('text', ''),
+                salary_info.get('min') if isinstance(salary_info, dict) else None,
+                salary_info.get('max') if isinstance(salary_info, dict) else None,
+                salary_info.get('text', '') if isinstance(salary_info, dict) else str(salary_info),
                 job_data.get('experience_level', 'mid'),
                 job_data.get('remote', False),
                 job_data.get('contract_type', ''),
@@ -151,37 +117,16 @@ class KnowledgeBase:
             ))
             
             conn.commit()
-            logger.debug(f"✅ Offre stockée: {job_data.get('title', 'Sans titre')}")
+            conn.close()
             return True
             
         except Exception as e:
-            logger.error(f"Erreur stockage base principale: {e}")
+            logger.error(f"Erreur stockage offre: {e}")
             return False
-        finally:
-            conn.close()
     
     async def search_jobs(self, query: str, filters: Dict[str, Any] = None, 
                          limit: int = 20) -> List[Dict[str, Any]]:
-        """Recherche hybride selon le moteur disponible"""
-        
-        # Recherche avec moteur TF-IDF si disponible
-        search_results = []
-        
-        if self.search_engine and self.embedding_method == "tfidf":
-            try:
-                search_results = self.search_engine.search_jobs(query, limit=limit*2)
-            except Exception as e:
-                logger.warning(f"Erreur recherche TF-IDF: {e}")
-        
-        # Recherche SQL de base en complément ou fallback
-        sql_results = self.search_jobs_sql(query, filters, limit)
-        
-        # Fusion des résultats
-        return self.merge_search_results(search_results, sql_results, limit)
-    
-    def search_jobs_sql(self, query: str, filters: Dict[str, Any] = None, 
-                       limit: int = 20) -> List[Dict[str, Any]]:
-        """Recherche SQL de base"""
+        """Recherche d'offres d'emploi"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
@@ -253,36 +198,8 @@ class KnowledgeBase:
             return results
             
         except Exception as e:
-            logger.error(f"Erreur recherche SQL: {e}")
+            logger.error(f"Erreur recherche: {e}")
             return []
-    
-    def merge_search_results(self, search_results: List[Dict], 
-                           sql_results: List[Dict], limit: int) -> List[Dict[str, Any]]:
-        """Fusionne les résultats de recherche"""
-        
-        # Si pas de résultats de recherche spécialisée, utiliser SQL
-        if not search_results:
-            return sql_results[:limit]
-        
-        # Fusion intelligente en évitant les doublons
-        merged = []
-        seen_ids = set()
-        
-        # Ajouter d'abord les résultats de recherche spécialisée (meilleur scoring)
-        for result in search_results:
-            hash_id = result.get('hash_id') or result.get('content_hash')
-            if hash_id and hash_id not in seen_ids:
-                merged.append(result)
-                seen_ids.add(hash_id)
-        
-        # Compléter avec les résultats SQL
-        for result in sql_results:
-            hash_id = result.get('hash_id')
-            if hash_id and hash_id not in seen_ids and len(merged) < limit:
-                merged.append(result)
-                seen_ids.add(hash_id)
-        
-        return merged[:limit]
     
     async def get_market_insights(self) -> Dict[str, Any]:
         """Génère des insights du marché basés sur les données collectées"""
@@ -301,7 +218,7 @@ class KnowledgeBase:
                 }
             
             # Top technologies
-            cursor.execute('SELECT technologies FROM job_offers_main WHERE technologies IS NOT NULL AND technologies != "[]"')
+            cursor.execute('SELECT technologies FROM job_offers_main WHERE technologies IS NOT NULL')
             tech_data = cursor.fetchall()
             
             tech_count = {}
@@ -309,8 +226,7 @@ class KnowledgeBase:
                 try:
                     technologies = json.loads(row[0])
                     for tech in technologies:
-                        if tech:  # Éviter les chaînes vides
-                            tech_count[tech] = tech_count.get(tech, 0) + 1
+                        tech_count[tech] = tech_count.get(tech, 0) + 1
                 except:
                     continue
             
@@ -320,13 +236,13 @@ class KnowledgeBase:
             cursor.execute('''
                 SELECT experience_level, COUNT(*) 
                 FROM job_offers_main 
-                WHERE experience_level IS NOT NULL AND is_active = 1
+                WHERE experience_level IS NOT NULL 
                 GROUP BY experience_level
             ''')
             exp_levels = cursor.fetchall()
             
             # Pourcentage de remote
-            cursor.execute('SELECT COUNT(*) FROM job_offers_main WHERE remote = 1 AND is_active = 1')
+            cursor.execute('SELECT COUNT(*) FROM job_offers_main WHERE remote = 1')
             remote_count = cursor.fetchone()[0]
             remote_percentage = (remote_count / total_jobs * 100) if total_jobs > 0 else 0
             
@@ -334,37 +250,22 @@ class KnowledgeBase:
             cursor.execute('''
                 SELECT company, COUNT(*) as job_count
                 FROM job_offers_main 
-                WHERE company IS NOT NULL AND is_active = 1
+                WHERE company IS NOT NULL
                 GROUP BY company 
                 ORDER BY job_count DESC 
                 LIMIT 10
             ''')
             top_companies = cursor.fetchall()
             
-            # Évolution récente (derniers 7 jours vs avant)
-            cursor.execute('''
-                SELECT COUNT(*) 
-                FROM job_offers_main 
-                WHERE scraped_at >= datetime('now', '-7 days') AND is_active = 1
-            ''')
-            recent_jobs = cursor.fetchone()[0]
-            
             conn.close()
             
             return {
                 'total_jobs': total_jobs,
-                'recent_jobs_7d': recent_jobs,
                 'top_technologies': [{'name': tech, 'count': count} for tech, count in top_technologies],
                 'experience_distribution': [{'level': level or 'Unknown', 'count': count} for level, count in exp_levels],
                 'remote_percentage': round(remote_percentage, 1),
                 'top_hiring_companies': [{'name': company, 'jobs': count} for company, count in top_companies],
-                'last_updated': datetime.now().isoformat(),
-                'data_quality': {
-                    'tech_coverage': len([t for t in tech_count if tech_count[t] > 1]),
-                    'company_diversity': len(top_companies),
-                    'remote_data_available': remote_count > 0
-                },
-                'embedding_method': self.embedding_method
+                'last_updated': datetime.now().isoformat()
             }
             
         except Exception as e:
@@ -404,7 +305,7 @@ class KnowledgeBase:
                 if job[4]:  # technologies column
                     try:
                         techs = json.loads(job[4])
-                        all_techs.extend([tech for tech in techs if tech])  # Éviter les chaînes vides
+                        all_techs.extend(techs)
                     except:
                         continue
             
@@ -414,21 +315,13 @@ class KnowledgeBase:
             
             top_techs = sorted(tech_count.items(), key=lambda x: x[1], reverse=True)[:5]
             
-            # Niveaux d'expérience
-            exp_levels = {}
-            for job in company_jobs:
-                level = job[2] or 'Unknown'  # experience_level column
-                exp_levels[level] = exp_levels.get(level, 0) + 1
-            
             return {
                 'company': company_name,
                 'jobs_found': total_jobs,
-                'remote_percentage': round((remote_jobs / total_jobs) * 100, 1) if total_jobs > 0 else 0,
+                'remote_percentage': round((remote_jobs / total_jobs) * 100, 1),
                 'top_technologies': [{'tech': tech, 'count': count} for tech, count in top_techs],
-                'experience_levels': exp_levels,
-                'recent_activity': total_jobs > 0,
                 'hiring_trend': 'Active' if total_jobs > 2 else 'Limited',
-                'last_job_posted': company_jobs[0][5] if company_jobs else None  # scraped_at
+                'last_job_posted': company_jobs[0][5] if company_jobs else None
             }
             
         except Exception as e:
@@ -436,12 +329,11 @@ class KnowledgeBase:
             return {'error': str(e)}
     
     def get_stats(self) -> Dict[str, Any]:
-        """Retourne les statistiques complètes de la base de connaissances"""
+        """Retourne les statistiques de la base de connaissances"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Stats principales
             cursor.execute('SELECT COUNT(*) FROM job_offers_main')
             total_jobs = cursor.fetchone()[0]
             
@@ -460,21 +352,12 @@ class KnowledgeBase:
             
             conn.close()
             
-            # Stats du moteur de recherche
-            search_stats = {}
-            if self.search_engine and hasattr(self.search_engine, 'get_stats'):
-                try:
-                    search_stats = self.search_engine.get_stats()
-                except Exception as e:
-                    logger.warning(f"Erreur récupération stats moteur: {e}")
-            
             return {
                 'total_jobs': total_jobs,
                 'active_jobs': active_jobs,
                 'sources': sources,
                 'last_scrape': last_scrape,
-                'search_method': self.embedding_method,
-                'search_engine_stats': search_stats,
+                'embeddings_enabled': self.embeddings_enabled,
                 'database_path': self.db_path
             }
             
@@ -488,27 +371,3 @@ class KnowledgeBase:
         
         unique_string = f"{job_data.get('title', '')}{job_data.get('company', '')}{job_data.get('url', '')}"
         return hashlib.md5(unique_string.encode()).hexdigest()
-    
-    def cleanup_old_jobs(self, days_old: int = 30) -> int:
-        """Nettoie les offres anciennes"""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            cursor.execute('''
-                UPDATE job_offers_main 
-                SET is_active = 0 
-                WHERE scraped_at < datetime('now', '-{} days')
-                AND is_active = 1
-            '''.format(days_old))
-            
-            cleaned_count = cursor.rowcount
-            conn.commit()
-            conn.close()
-            
-            logger.info(f"🧹 {cleaned_count} offres anciennes désactivées")
-            return cleaned_count
-            
-        except Exception as e:
-            logger.error(f"Erreur nettoyage: {e}")
-            return 0

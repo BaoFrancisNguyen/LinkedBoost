@@ -1,33 +1,44 @@
-# app.py - LinkedBoost avec Flask-SocketIO
-from flask import Flask, render_template, request, jsonify
+# app.py - LinkedBoost Assistant IA pour LinkedIn - Version complète
+
+from flask import Flask, render_template, request, jsonify, redirect
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit, join_room, leave_room
 import json
 import os
-import logging
 import asyncio
-import threading
-import uuid
 from datetime import datetime
-from models.ai_generator import LinkedBoostAI
-from config import Config
+import logging
 
-# Configuration des logs
+# Configuration du logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Imports des modules locaux
+from models.ai_generator import LinkedBoostAI
+from config import Config
+
+# Initialisation de l'application Flask
 app = Flask(__name__)
 app.config.from_object(Config)
 CORS(app)
 
-# Initialisation de SocketIO
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
-
 # Initialisation du générateur IA
 ai_generator = LinkedBoostAI()
 
-# Stockage des sessions de scraping actives
-active_scraping_sessions = {}
+# Instance globale de l'orchestrateur de scraping
+scraping_orchestrator = None
+
+def get_scraping_orchestrator():
+    """Récupère ou crée l'instance de l'orchestrateur de scraping"""
+    global scraping_orchestrator
+    if scraping_orchestrator is None:
+        try:
+            from models.scraper import ScrapingOrchestrator
+            scraping_orchestrator = ScrapingOrchestrator()
+            logger.info("🔧 Orchestrateur de scraping initialisé")
+        except Exception as e:
+            logger.error(f"❌ Erreur initialisation scraping: {e}")
+            scraping_orchestrator = None
+    return scraping_orchestrator
 
 # Chargement des données d'exemple
 def load_example_data():
@@ -36,26 +47,62 @@ def load_example_data():
         with open('data/examples.json', 'r', encoding='utf-8') as f:
             return json.load(f)
     except FileNotFoundError:
-        logger.warning("Fichier examples.json non trouvé")
+        logger.warning("⚠️ Fichier examples.json non trouvé, utilisation de données par défaut")
         return {
-            "profiles": [],
-            "job_offers": [],
-            "companies": []
+            "profiles": [
+                {
+                    "name": "Jean Dupont",
+                    "position": "Développeur Full Stack",
+                    "company": "TechCorp",
+                    "skills": ["JavaScript", "React", "Node.js", "Python"]
+                }
+            ],
+            "job_offers": [
+                {
+                    "title": "Développeur Python Senior",
+                    "company": "DataFlow",
+                    "location": "Paris",
+                    "description": "Nous recherchons un développeur Python expérimenté..."
+                }
+            ],
+            "companies": [
+                {
+                    "name": "TechCorp",
+                    "industry": "Technologie",
+                    "size": "500-1000 employés"
+                }
+            ]
         }
 
 example_data = load_example_data()
 
-# Routes Flask normales
+# ==========================================
+# ROUTES PRINCIPALES
+# ==========================================
+
 @app.route('/')
 def dashboard():
     """Dashboard principal de LinkedBoost"""
-    stats = {
-        'messages_generated': 150,
-        'cover_letters_generated': 45,
-        'emails_generated': 78,
-        'success_rate': 85
-    }
-    return render_template('index.html', stats=stats, ollama_status=ai_generator.is_available())
+    try:
+        stats = {
+            'messages_generated': 150,
+            'cover_letters_generated': 45,
+            'emails_generated': 78,
+            'success_rate': 85
+        }
+        
+        # Ajouter les stats de scraping si disponible
+        orchestrator = get_scraping_orchestrator()
+        if orchestrator:
+            scraping_stats = orchestrator.get_stats()
+            stats['jobs_scraped'] = scraping_stats.get('total_jobs', 0)
+        
+        return render_template('index.html', 
+                             stats=stats, 
+                             ollama_status=ai_generator.is_available())
+    except Exception as e:
+        logger.error(f"Erreur dashboard principal: {e}")
+        return render_template('500.html'), 500
 
 @app.route('/generate/message')
 def message_generator_page():
@@ -82,27 +129,39 @@ def profile_analyzer_page():
     """Page d'analyse de profil LinkedIn"""
     return render_template('profile_analyzer.html')
 
+# ==========================================
+# ROUTES ADMINISTRATION
+# ==========================================
+
+@app.route('/admin')
+def admin_dashboard():
+    """Dashboard d'administration"""
+    return render_template('admin/dashboard.html')
+
 @app.route('/admin/scraper')
 def scraper_dashboard():
-    """Dashboard d'administration du scraping"""
+    """Dashboard de scraping"""
     return render_template('admin/scraper_dashboard.html')
 
 @app.route('/admin/knowledge')
 def knowledge_base_page():
-    """Page de gestion de la base de connaissances"""
+    """Page de la base de connaissances"""
     return render_template('admin/knowledge_base.html')
 
-# API Endpoints
+# ==========================================
+# API GÉNÉRATION DE CONTENU
+# ==========================================
+
 @app.route('/api/generate/message', methods=['POST'])
 def generate_linkedin_message():
     """API pour générer des messages LinkedIn personnalisés"""
-    data = request.get_json()
-    
-    required_fields = ['message_type', 'recipient_name', 'context']
-    if not all(field in data for field in required_fields):
-        return jsonify({'error': 'Champs requis manquants'}), 400
-    
     try:
+        data = request.get_json()
+        
+        required_fields = ['message_type', 'recipient_name', 'context']
+        if not all(field in data for field in required_fields):
+            return jsonify({'error': 'Champs requis manquants'}), 400
+        
         message = ai_generator.generate_linkedin_message(
             message_type=data['message_type'],
             recipient_name=data['recipient_name'],
@@ -119,7 +178,7 @@ def generate_linkedin_message():
             'message': message,
             'type': data['message_type']
         })
-    
+        
     except Exception as e:
         logger.error(f"Erreur génération message: {e}")
         return jsonify({'error': str(e)}), 500
@@ -127,13 +186,13 @@ def generate_linkedin_message():
 @app.route('/api/generate/cover-letter', methods=['POST'])
 def generate_cover_letter():
     """API pour générer des lettres de motivation"""
-    data = request.get_json()
-    
-    required_fields = ['job_title', 'company_name', 'applicant_name']
-    if not all(field in data for field in required_fields):
-        return jsonify({'error': 'Champs requis manquants'}), 400
-    
     try:
+        data = request.get_json()
+        
+        required_fields = ['job_title', 'company_name', 'applicant_name']
+        if not all(field in data for field in required_fields):
+            return jsonify({'error': 'Champs requis manquants'}), 400
+        
         cover_letter = ai_generator.generate_cover_letter(
             job_title=data['job_title'],
             company_name=data['company_name'],
@@ -158,13 +217,13 @@ def generate_cover_letter():
 @app.route('/api/generate/email', methods=['POST'])
 def generate_email():
     """API pour générer des emails de networking"""
-    data = request.get_json()
-    
-    required_fields = ['email_type', 'recipient_name', 'subject_context']
-    if not all(field in data for field in required_fields):
-        return jsonify({'error': 'Champs requis manquants'}), 400
-    
     try:
+        data = request.get_json()
+        
+        required_fields = ['email_type', 'recipient_name', 'subject_context']
+        if not all(field in data for field in required_fields):
+            return jsonify({'error': 'Champs requis manquants'}), 400
+        
         email = ai_generator.generate_networking_email(
             email_type=data['email_type'],
             recipient_name=data['recipient_name'],
@@ -188,12 +247,12 @@ def generate_email():
 @app.route('/api/analyze/profile', methods=['POST'])
 def analyze_profile():
     """API pour analyser un profil LinkedIn"""
-    data = request.get_json()
-    
-    if 'profile_text' not in data:
-        return jsonify({'error': 'Texte du profil requis'}), 400
-    
     try:
+        data = request.get_json()
+        
+        if 'profile_text' not in data:
+            return jsonify({'error': 'Texte du profil requis'}), 400
+        
         analysis = ai_generator.analyze_linkedin_profile(
             profile_text=data['profile_text'],
             target_role=data.get('target_role', ''),
@@ -209,169 +268,277 @@ def analyze_profile():
         logger.error(f"Erreur analyse profil: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/status')
-def api_status():
-    """Statut de l'API et d'Ollama"""
-    try:
-        system_status = ai_generator.get_system_status()
-        
-        return jsonify({
-            'ollama_available': ai_generator.is_available(),
-            'model': ai_generator.model,
-            'features': system_status.get('features', {}),
-            'capabilities': system_status.get('capabilities', {}),
-            'rag_enabled': system_status.get('rag_enabled', False)
-        })
-    except Exception as e:
-        logger.error(f"Erreur statut API: {e}")
-        return jsonify({
-            'ollama_available': False,
-            'error': str(e)
-        }), 500
+# ==========================================
+# API SCRAPING
+# ==========================================
 
 @app.route('/api/scraping/start', methods=['POST'])
 def start_scraping():
-    """Lance le scraping des offres d'emploi avec WebSocket"""
+    """Lance le scraping des offres d'emploi"""
     try:
-        # Import conditionnel
-        try:
-            from models.scraper import ScrapingOrchestrator
-            scraping_available = True
-        except ImportError as e:
-            logger.warning(f"Scraping non disponible: {e}")
-            scraping_available = False
-        
-        if not scraping_available:
-            return jsonify({
-                'success': False,
-                'error': 'Modules de scraping non disponibles'
-            }), 503
-        
         data = request.get_json() or {}
         sources = data.get('sources', ['wttj'])
-        max_jobs = data.get('max_jobs', 25)
-        delay = data.get('delay', 1.0)
-        session_id = data.get('session_id')
+        max_jobs = data.get('max_jobs', 50)
         
-        logger.info(f"🚀 Démarrage scraping - Sources: {sources}, Max: {max_jobs}, Session: {session_id}")
+        orchestrator = get_scraping_orchestrator()
+        if not orchestrator:
+            return jsonify({
+                'success': False,
+                'error': 'Orchestrateur de scraping non disponible'
+            }), 500
         
-        # Lancer le scraping dans un thread séparé
-        def run_scraping_thread():
-            try:
-                orchestrator = ScrapingOrchestrator()
-                
-                # Créer une nouvelle boucle d'événements
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-                
-                try:
-                    # Lancer le scraping avec callbacks WebSocket
-                    stats = loop.run_until_complete(
-                        run_scraping_with_websocket(orchestrator, sources, session_id)
-                    )
-                    
-                    # Envoyer le résultat final
-                    socketio.emit('scraping_completed', {
-                        'session_id': session_id,
-                        'stats': stats,
-                        'success': True
-                    }, namespace='/scraping')
-                    
-                finally:
-                    loop.close()
-                    
-            except Exception as e:
-                logger.error(f"Erreur thread scraping: {e}")
-                socketio.emit('scraping_error', {
-                    'session_id': session_id,
-                    'error': str(e)
-                }, namespace='/scraping')
+        # Ajouter un log de démarrage
+        orchestrator.add_log(f"🚀 Démarrage scraping: sources={sources}, max_jobs={max_jobs}")
         
-        # Démarrer le thread
-        scraping_thread = threading.Thread(target=run_scraping_thread)
-        scraping_thread.daemon = True
-        scraping_thread.start()
+        # Lancement asynchrone
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            stats = loop.run_until_complete(orchestrator.run_full_scrape(sources))
+        finally:
+            loop.close()
         
         return jsonify({
             'success': True,
-            'message': 'Scraping démarré',
-            'session_id': session_id
+            'stats': stats,
+            'message': f"Scraping terminé : {stats.get('total_jobs', 0)} offres collectées"
         })
         
     except Exception as e:
-        logger.error(f"❌ Erreur démarrage scraping: {e}")
+        logger.error(f"Erreur scraping: {e}")
+        # Ajouter l'erreur aux logs si possible
+        try:
+            orchestrator = get_scraping_orchestrator()
+            if orchestrator:
+                orchestrator.add_log(f"❌ Erreur scraping : {str(e)}", 'error')
+        except:
+            pass
+        
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
 
-async def run_scraping_with_websocket(orchestrator, sources, session_id):
-    """Lance le scraping avec émission WebSocket"""
-    
-    # Émission des logs pendant le scraping
-    def emit_log(level, message):
-        socketio.emit('scraping_log', {
-            'session_id': session_id,
-            'timestamp': datetime.now().strftime('%H:%M:%S'),
-            'level': level,
-            'message': message
-        }, namespace='/scraping')
-    
-    def emit_progress(phase, progress, **kwargs):
-        socketio.emit('scraping_progress', {
-            'session_id': session_id,
-            'phase': phase,
-            'progress_percent': progress,
-            **kwargs
-        }, namespace='/scraping')
-    
+@app.route('/api/scraping/logs', methods=['GET'])
+def get_scraping_logs():
+    """Récupère les logs de scraping pour le frontend"""
     try:
-        emit_log('info', '🚀 Initialisation du scraping...')
-        emit_progress('Initialisation...', 5)
+        orchestrator = get_scraping_orchestrator()
+        if not orchestrator:
+            return jsonify({
+                'success': False,
+                'error': 'Orchestrateur non disponible'
+            }), 500
         
-        emit_log('info', '📡 Connexion aux sources...')
-        emit_progress('Connexion aux sources...', 15)
+        logs = orchestrator.get_logs()
         
-        emit_log('info', f'🔍 Scraping de {len(sources)} sources...')
-        emit_progress('Extraction des offres...', 30)
-        
-        # Lancer le scraping réel
-        stats = await orchestrator.run_full_scrape(sources)
-        
-        emit_log('info', '🔄 Traitement des données...')
-        emit_progress('Traitement des données...', 70)
-        
-        emit_log('info', '🧠 Génération des embeddings...')
-        emit_progress('Génération des embeddings...', 85)
-        
-        emit_log('info', '💾 Sauvegarde en base...')
-        emit_progress('Sauvegarde...', 95)
-        
-        emit_log('success', f'✅ Scraping terminé: {stats.get("total_jobs", 0)} offres')
-        emit_progress('Terminé', 100, total_jobs=stats.get('total_jobs', 0))
-        
-        return stats
+        return jsonify({
+            'success': True,
+            'logs': logs,
+            'count': len(logs)
+        })
         
     except Exception as e:
-        emit_log('error', f'❌ Erreur: {str(e)}')
-        raise
+        logger.error(f"Erreur récupération logs: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/scraping/logs', methods=['DELETE'])
+def clear_scraping_logs():
+    """Efface les logs de scraping"""
+    try:
+        orchestrator = get_scraping_orchestrator()
+        if not orchestrator:
+            return jsonify({
+                'success': False,
+                'error': 'Orchestrateur non disponible'
+            }), 500
+        
+        orchestrator.clear_logs()
+        
+        return jsonify({
+            'success': True,
+            'message': 'Logs effacés'
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur effacement logs: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/scraping/status', methods=['GET'])
+def get_scraping_status():
+    """Statut en temps réel du scraping"""
+    try:
+        orchestrator = get_scraping_orchestrator()
+        if not orchestrator:
+            return jsonify({
+                'success': False,
+                'error': 'Orchestrateur non disponible'
+            }), 500
+        
+        stats = orchestrator.get_stats()
+        
+        return jsonify({
+            'success': True,
+            'stats': stats
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur statut scraping: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/scraping/config', methods=['POST'])
+def save_scraping_config():
+    """Sauvegarde la configuration de scraping"""
+    try:
+        config = request.get_json()
+        
+        # Créer le dossier de données si nécessaire
+        os.makedirs('./data', exist_ok=True)
+        
+        # Sauvegarder la configuration
+        with open('./data/scraping_config.json', 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
+        
+        return jsonify({
+            'success': True,
+            'message': 'Configuration sauvegardée'
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur sauvegarde config: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/scraping/config', methods=['GET'])
+def get_scraping_config():
+    """Récupère la configuration de scraping"""
+    try:
+        try:
+            with open('./data/scraping_config.json', 'r', encoding='utf-8') as f:
+                config = json.load(f)
+        except FileNotFoundError:
+            # Configuration par défaut
+            config = {
+                'sources': {
+                    'wttj': True,
+                    'linkedin': False,
+                    'indeed': False
+                },
+                'maxJobs': 50,
+                'delay': 2.0
+            }
+        
+        return jsonify({
+            'success': True,
+            'config': config
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur récupération config: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ==========================================
+# API ADMIN
+# ==========================================
+
+@app.route('/api/admin/scraping/status')
+def admin_scraping_status():
+    """Statut du scraping pour l'admin"""
+    try:
+        orchestrator = get_scraping_orchestrator()
+        if not orchestrator:
+            return jsonify({
+                'success': False,
+                'error': 'Orchestrateur non disponible'
+            }), 500
+        
+        stats = orchestrator.get_stats()
+        
+        return jsonify({
+            'success': True,
+            'status': 'active' if stats.get('ai_features_enabled') else 'basic',
+            'stats': stats
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur statut admin scraping: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+@app.route('/api/admin/system/health')
+def admin_system_health():
+    """Santé du système"""
+    try:
+        # Vérifications du système
+        checks = {
+            'ollama': ai_generator.is_available(),
+            'database': True,  # SQLite toujours disponible
+            'scraping': get_scraping_orchestrator() is not None,
+            'embeddings': False,
+            'knowledge_base': False
+        }
+        
+        # Test de la base de connaissances
+        try:
+            from models.knowledge_base import KnowledgeBase
+            kb = KnowledgeBase()
+            kb_stats = kb.get_stats()
+            checks['knowledge_base'] = True
+            checks['embeddings'] = kb_stats.get('embeddings_enabled', False)
+        except Exception as e:
+            logger.debug(f"KB non disponible: {e}")
+            checks['knowledge_base'] = False
+        
+        # Déterminer le statut global
+        critical_services = ['ollama', 'database']
+        all_critical_healthy = all(checks[service] for service in critical_services)
+        
+        status = 'healthy' if all_critical_healthy else 'degraded'
+        
+        health_info = {
+            'status': status,
+            'timestamp': datetime.now().isoformat(),
+            'checks': checks,
+            'uptime': 'Runtime',
+            'version': '1.0.0'
+        }
+        
+        status_code = 200 if status == 'healthy' else 503
+        return jsonify(health_info), status_code
+        
+    except Exception as e:
+        logger.error(f"Erreur santé système: {e}")
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.now().isoformat()
+        }), 500
+
+# ==========================================
+# API BASE DE CONNAISSANCES
+# ==========================================
 
 @app.route('/api/knowledge/search', methods=['POST'])
 def search_knowledge():
     """Recherche dans la base de connaissances"""
     try:
-        try:
-            from models.knowledge_base import KnowledgeBase
-            kb_available = True
-        except ImportError:
-            kb_available = False
-        
-        if not kb_available:
-            return jsonify({
-                'success': False,
-                'error': 'Base de connaissances non disponible'
-            }), 503
-        
         data = request.get_json()
         query = data.get('query', '')
         filters = data.get('filters', {})
@@ -380,6 +547,7 @@ def search_knowledge():
         if not query:
             return jsonify({'error': 'Query required'}), 400
         
+        from models.knowledge_base import KnowledgeBase
         kb = KnowledgeBase()
         
         loop = asyncio.new_event_loop()
@@ -399,7 +567,7 @@ def search_knowledge():
         })
         
     except Exception as e:
-        logger.error(f"Erreur recherche: {e}")
+        logger.error(f"Erreur recherche KB: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
@@ -409,21 +577,7 @@ def search_knowledge():
 def get_market_analytics():
     """Retourne les analytics du marché de l'emploi"""
     try:
-        try:
-            from models.knowledge_base import KnowledgeBase
-            kb_available = True
-        except ImportError:
-            kb_available = False
-        
-        if not kb_available:
-            return jsonify({
-                'success': True,
-                'insights': {
-                    'total_jobs': 0,
-                    'message': 'Base de connaissances non disponible'
-                }
-            })
-        
+        from models.knowledge_base import KnowledgeBase
         kb = KnowledgeBase()
         
         loop = asyncio.new_event_loop()
@@ -440,90 +594,283 @@ def get_market_analytics():
         })
         
     except Exception as e:
-        logger.error(f"Erreur analytics: {e}")
+        logger.error(f"Erreur analytics marché: {e}")
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
 
-# WebSocket Events
-@socketio.on('connect', namespace='/scraping')
-def on_scraping_connect():
-    logger.info("🔌 Client connecté au namespace /scraping")
-    emit('connection_confirmed', {'status': 'connected'})
+# ==========================================
+# API GÉNÉRATION ENRICHIE (RAG)
+# ==========================================
 
-@socketio.on('disconnect', namespace='/scraping')
-def on_scraping_disconnect():
-    logger.info("🔌 Client déconnecté du namespace /scraping")
+@app.route('/api/generate/enhanced', methods=['POST'])
+def generate_enhanced_content():
+    """Génération de contenu enrichie avec RAG"""
+    try:
+        data = request.get_json()
+        content_type = data.get('type')  # 'message', 'cover_letter', 'email'
+        
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        
+        try:
+            if content_type == 'message':
+                result = loop.run_until_complete(
+                    ai_generator.generate_linkedin_message_enhanced(**data)
+                )
+            elif content_type == 'cover_letter':
+                result = loop.run_until_complete(
+                    ai_generator.generate_cover_letter_enhanced(**data)
+                )
+            else:
+                return jsonify({'error': 'Type de contenu non supporté'}), 400
+        finally:
+            loop.close()
+        
+        return jsonify({
+            'success': True,
+            **result
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur génération enrichie: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
 
-@socketio.on('start_scraping_session', namespace='/scraping')
-def on_start_scraping_session(data):
-    """Démarre une session de scraping"""
-    session_id = str(uuid.uuid4())
-    sources = data.get('sources', ['wttj'])
+# ==========================================
+# API STATUS GLOBALE
+# ==========================================
+
+@app.route('/api/status')
+def api_status():
+    """Statut global de l'API et des services"""
+    try:
+        # Statut de base
+        status = {
+            'ollama_available': ai_generator.is_available(),
+            'model': ai_generator.model,
+            'features': {
+                'message_generation': True,
+                'cover_letter_generation': True,
+                'email_generation': True,
+                'profile_analysis': True,
+                'scraping': True,
+                'knowledge_base': True
+            }
+        }
+        
+        # Ajouter les stats de scraping si disponible
+        try:
+            orchestrator = get_scraping_orchestrator()
+            if orchestrator:
+                scraping_stats = orchestrator.get_stats()
+                status['scraping'] = {
+                    'available': True,
+                    'stats': scraping_stats,
+                    'ai_features_enabled': scraping_stats.get('ai_features_enabled', False)
+                }
+            else:
+                status['scraping'] = {
+                    'available': False,
+                    'error': 'Orchestrateur non initialisé'
+                }
+        except Exception as e:
+            status['scraping'] = {
+                'available': False,
+                'error': str(e)
+            }
+        
+        # Ajouter les stats de la base de connaissances si disponible
+        try:
+            from models.knowledge_base import KnowledgeBase
+            kb = KnowledgeBase()
+            kb_stats = kb.get_stats()
+            status['knowledge_base'] = {
+                'available': True,
+                'stats': kb_stats
+            }
+        except Exception as e:
+            status['knowledge_base'] = {
+                'available': False,
+                'error': str(e)
+            }
+        
+        return jsonify(status)
+        
+    except Exception as e:
+        logger.error(f"Erreur statut API: {e}")
+        return jsonify({
+            'error': str(e),
+            'ollama_available': False
+        }), 500
+
+# ==========================================
+# ROUTES SOCKET.IO PLACEHOLDER
+# ==========================================
+
+@app.route('/socket.io/')
+@app.route('/socket.io/<path:subpath>')
+def socket_io_handler(subpath=''):
+    """Gestionnaire pour toutes les requêtes Socket.IO"""
+    # Log des tentatives de connexion pour debug
+    logger.debug(f"Socket.IO request: {request.path} - {request.args}")
     
-    active_scraping_sessions[session_id] = {
-        'sources': sources,
-        'started_at': datetime.now().isoformat(),
-        'status': 'initialized'
+    # Réponse JSON indiquant que Socket.IO n'est pas configuré
+    response = {
+        'error': 'Socket.IO not configured',
+        'message': 'This version uses REST API for real-time updates',
+        'alternatives': {
+            'logs': '/api/scraping/logs',
+            'status': '/api/scraping/status',
+            'health': '/api/admin/system/health'
+        },
+        'polling_recommended': True,
+        'path_requested': request.path
     }
     
-    logger.info(f"📡 Session de scraping créée: {session_id}")
-    emit('session_started', {'session_id': session_id})
+    # Retourner 404 pour que le client comprenne que Socket.IO n'est pas disponible
+    return jsonify(response), 404
 
-@socketio.on('stop_scraping', namespace='/scraping')
-def on_stop_scraping(data):
-    """Arrête une session de scraping"""
-    session_id = data.get('session_id')
-    
-    if session_id in active_scraping_sessions:
-        active_scraping_sessions[session_id]['status'] = 'cancelled'
-        logger.info(f"⏹️ Session de scraping arrêtée: {session_id}")
-        emit('scraping_cancelled', {'session_id': session_id})
+# Gérer spécifiquement les requêtes POST Socket.IO
+@app.route('/socket.io/', methods=['POST'])
+@app.route('/socket.io/<path:subpath>', methods=['POST'])
+def socket_io_post_handler(subpath=''):
+    """Gestionnaire POST pour Socket.IO"""
+    return jsonify({
+        'error': 'Socket.IO POST not supported',
+        'message': 'Use REST API endpoints instead'
+    }), 404
+
+# ==========================================
+# ROUTES DE TEST
+# ==========================================
+
+@app.route('/api/test/admin')
+def test_admin_routes():
+    """Route de test pour vérifier que les routes admin fonctionnent"""
+    try:
+        test_results = {
+            'timestamp': datetime.now().isoformat(),
+            'tests': {}
+        }
+        
+        # Test 1: Santé système
+        try:
+            health_check = {
+                'ollama': ai_generator.is_available(),
+                'database': True
+            }
+            test_results['tests']['health'] = {'status': 'ok', 'checks': health_check}
+        except Exception as e:
+            test_results['tests']['health'] = {'status': 'error', 'error': str(e)}
+        
+        # Test 2: Scraping status
+        try:
+            orchestrator = get_scraping_orchestrator()
+            if orchestrator:
+                scraping_stats = orchestrator.get_stats()
+                test_results['tests']['scraping'] = {'status': 'ok', 'available': True}
+            else:
+                test_results['tests']['scraping'] = {'status': 'warning', 'message': 'Orchestrateur non initialisé'}
+        except Exception as e:
+            test_results['tests']['scraping'] = {'status': 'error', 'error': str(e)}
+        
+        # Test 3: Base de connaissances
+        try:
+            from models.knowledge_base import KnowledgeBase
+            kb = KnowledgeBase()
+            kb_stats = kb.get_stats()
+            test_results['tests']['knowledge_base'] = {'status': 'ok', 'stats': kb_stats}
+        except Exception as e:
+            test_results['tests']['knowledge_base'] = {'status': 'error', 'error': str(e)}
+        
+        return jsonify({
+            'success': True,
+            'message': 'Tests des routes admin terminés',
+            'results': test_results
+        })
+        
+    except Exception as e:
+        logger.error(f"Erreur tests admin: {e}")
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+# ==========================================
+# GESTION D'ERREURS
+# ==========================================
 
 @app.errorhandler(404)
 def not_found(error):
+    """Page 404 personnalisée"""
     return render_template('404.html'), 404
 
 @app.errorhandler(500)
 def internal_error(error):
+    """Page 500 personnalisée"""
+    logger.error(f"Erreur interne: {error}")
     return render_template('500.html'), 500
 
-@app.route('/admin')
-def admin_dashboard():
-    """Page d'administration principale"""
-    return render_template('admin/dashboard.html')
+@app.errorhandler(Exception)
+def handle_exception(e):
+    """Gestionnaire d'exceptions global"""
+    logger.error(f"Exception non gérée: {e}")
+    return jsonify({
+        'error': 'Erreur interne du serveur',
+        'message': 'Une erreur inattendue s\'est produite'
+    }), 500
 
-if __name__ == '__main__':
-    # Vérification de la configuration au démarrage
-    print("🚀 LinkedBoost - Démarrage de l'application")
+# ==========================================
+# DÉMARRAGE DE L'APPLICATION
+# ==========================================
+
+def print_startup_info():
+    """Affiche les informations de démarrage"""
+    print("=" * 60)
+    print("🚀 LinkedBoost - Assistant IA pour LinkedIn")
+    print("=" * 60)
     print(f"📡 Ollama disponible: {ai_generator.is_available()}")
     print(f"🤖 Modèle: {ai_generator.model}")
-    print(f"🧠 RAG activé: {ai_generator.get_system_status().get('rag_enabled', False)}")
-    print(f"🔌 WebSocket activé: True")
+    
+    # Vérification des fonctionnalités avancées
+    try:
+        orchestrator = get_scraping_orchestrator()
+        if orchestrator:
+            print(f"🧠 Fonctionnalités avancées: {orchestrator.ai_features_enabled}")
+            print(f"📊 RAG activé: {orchestrator.ai_features_enabled}")
+            print(f"🕷️ Scraping activé: True")
+        else:
+            print("🧠 Fonctionnalités avancées: False")
+            print("📊 RAG activé: False") 
+            print("🕷️ Scraping activé: False")
+        print(f"⏰ Planificateur: False")  # À implémenter plus tard
+    except Exception as e:
+        print(f"⚠️ Fonctionnalités avancées: Erreur - {e}")
+    
+    print("=" * 60)
+    print("🌐 Application démarrée sur http://localhost:5000")
+    print("📚 Documentation API: http://localhost:5000/api/status")
+    print("🔧 Administration: http://localhost:5000/admin")
+    print("🕷️ Scraping: http://localhost:5000/admin/scraper")
+    print("🧠 Base de connaissances: http://localhost:5000/admin/knowledge")
+    print("=" * 60)
     
     if not ai_generator.is_available():
         print("⚠️  Ollama n'est pas disponible. Démarrez-le avec: ollama serve")
+        print("💡 Ou téléchargez-le depuis: https://ollama.ai")
+
+if __name__ == '__main__':
+    # Affichage des informations de démarrage
+    print_startup_info()
     
-    # Vérification des modules optionnels
-    optional_modules = []
-    try:
-        from models.scraper import ScrapingOrchestrator
-        optional_modules.append("✅ Scraping")
-    except ImportError:
-        optional_modules.append("❌ Scraping (dépendances manquantes)")
+    # Créer les dossiers nécessaires
+    os.makedirs('./data', exist_ok=True)
+    os.makedirs('./data/reports', exist_ok=True)
+    os.makedirs('./data/scraped', exist_ok=True)
     
-    try:
-        from models.knowledge_base import KnowledgeBase
-        optional_modules.append("✅ Base de connaissances")
-    except ImportError:
-        optional_modules.append("❌ Base de connaissances (dépendances manquantes)")
-    
-    print("📦 Modules disponibles:")
-    for module in optional_modules:
-        print(f"   {module}")
-    
-    print("🌐 Démarrage du serveur sur http://localhost:5000")
-    
-    # Démarrage avec SocketIO
-    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
+    # Lancement de l'application
+    app.run(debug=True, host='0.0.0.0', port=5000)

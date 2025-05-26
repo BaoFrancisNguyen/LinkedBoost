@@ -17,8 +17,8 @@ class Config:
     MAX_JOBS_PER_SCRAPE = int(os.environ.get('MAX_JOBS_PER_SCRAPE', 50))
     
     # Configuration Selenium
-    SELENIUM_HEADLESS = os.environ.get('SELENIUM_HEADLESS', 'True').lower() == 'true'
-    SELENIUM_TIMEOUT = int(os.environ.get('SELENIUM_TIMEOUT', 30))
+    SELENIUM_HEADLESS = os.environ.get('SELENIUM_HEADLESS', 'False').lower() == 'False'
+    SELENIUM_TIMEOUT = int(os.environ.get('SELENIUM_TIMEOUT', 300))
     SELENIUM_PAGE_LOAD_TIMEOUT = int(os.environ.get('SELENIUM_PAGE_LOAD_TIMEOUT', 45))
     SELENIUM_IMPLICIT_WAIT = int(os.environ.get('SELENIUM_IMPLICIT_WAIT', 10))
     
